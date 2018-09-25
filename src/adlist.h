@@ -1,59 +1,47 @@
-/* adlist.h - A generic doubly linked list implementation
- *
- * Copyright (c) 2006-2012, Salvatore Sanfilippo <antirez at gmail dot com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright notice,
- *     this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above copyright
- *     notice, this list of conditions and the following disclaimer in the
- *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Redis nor the names of its contributors may be used
- *     to endorse or promote products derived from this software without
- *     specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+/* 
+ * adlist.h - A generic doubly linked list implementation
+ *    一个通用的双向链表的实现方式
  */
 
 #ifndef __ADLIST_H__
 #define __ADLIST_H__
 
-/* Node, List, and Iterator are the only data structures used currently. */
-
+/* 双向链表结构中的          节点结构      迭代器结构       整体数据结构
+ * Node, List, and Iterator are the only data structures used currently. 
+ */
 typedef struct listNode {
+    //节点前置指向
     struct listNode *prev;
+	//节点后置指向
     struct listNode *next;
+	//节点值指向
     void *value;
 } listNode;
 
 typedef struct listIter {
+	//指向的下一个节点元素
     listNode *next;
+	//迭代器的方向
     int direction;
 } listIter;
 
 typedef struct list {
+	//头结点指向
     listNode *head;
+	//尾节点指向
     listNode *tail;
+	//值拷贝处理函数
     void *(*dup)(void *ptr);
+	//值释放处理函数
     void (*free)(void *ptr);
+	//值比较处理函数
     int (*match)(void *ptr, void *key);
+	//双向链表中元素个数
     unsigned long len;
 } list;
 
 /* Functions implemented as macros */
+/* 对外提供的宏处理函数 */
 #define listLength(l) ((l)->len)
 #define listFirst(l) ((l)->head)
 #define listLast(l) ((l)->tail)
@@ -70,6 +58,7 @@ typedef struct list {
 #define listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
+/* 对外提供操作双向链表结构的处理函数 */
 list *listCreate(void);
 void listRelease(list *list);
 void listEmpty(list *list);
@@ -89,7 +78,14 @@ void listRotate(list *list);
 void listJoin(list *l, list *o);
 
 /* Directions for iterators */
+/* 迭代器方向的宏定义 */
 #define AL_START_HEAD 0
 #define AL_START_TAIL 1
 
 #endif /* __ADLIST_H__ */
+
+
+
+
+
+
