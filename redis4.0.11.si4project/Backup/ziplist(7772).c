@@ -293,7 +293,7 @@ typedef struct zlentry {
 		(encoding) &= ZIP_STR_MASK;                               \
 } while(0)
 
-/* 根据编码方式获取编码对应的整数数据需要几个字节
+/* 
  * Return bytes needed to store integer encoded by 'encoding'. 
  */
 unsigned int zipIntSize(unsigned char encoding) {
@@ -311,7 +311,6 @@ unsigned int zipIntSize(unsigned char encoding) {
     }
 	/* 4 bit immediate */
     if (encoding >= ZIP_INT_IMM_MIN && encoding <= ZIP_INT_IMM_MAX)
-		//对应的数据直接在编码方式中了,所以只需要0个字节
         return 0; 
     panic("Invalid integer encoding 0x%02X", encoding);
     return 0;
@@ -399,41 +398,31 @@ unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, uns
     }                                                                          \
 } while(0);
 
-/* 使用多字节5个字节来表示字符串长度时的处理
+/* 
  * Encode the length of the previous entry and write it to "p". This only
  * uses the larger encoding (required in __ziplistCascadeUpdate). 
  */
 int zipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
-    //检测是否设置了记录数据的指针指向
     if (p != NULL) {
-		//设置第一个空间中的值的内容
         p[0] = ZIP_BIG_PREVLEN;
-		//设置后续的4个字节中对应的表示字符串长度的值
         memcpy(p+1,&len,sizeof(len));
         memrev32ifbe(p+1);
     }
-	//返回对应的字节数量为5个字节
     return 1+sizeof(len);
 }
 
-/* 获取编码对应长度的字符串所需要的空间字节数量
+/* 
  * Encode the length of the previous entry and write it to "p". Return the
  * number of bytes needed to encode this length if "p" is NULL. 
  */
 unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
-    //检测是否只是获取对应的表示字节数而不是进行设置数据处理
     if (p == NULL) {
-		//在没有设置对应的指针的情况下只是获取对应的需要的字节数量
         return (len < ZIP_BIG_PREVLEN) ? 1 : sizeof(len)+1;
     } else {
-        //检测给定的字符串的长度是否小于254
         if (len < ZIP_BIG_PREVLEN) {
-			//那么对应的第一个空间就直接设置为字符串所对应的长度
             p[0] = len;
-			//同时返回需要的表示字节数量为1
             return 1;
         } else {
-			//使用5个字节来记录字符串所对应的长度的处理
             return zipStorePrevEntryLengthLarge(p,len);
         }
     }
@@ -469,7 +458,7 @@ unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
     }                                                                          \
 } while(0);
 
-/* 计算新的前置节点的字节数量所对应的字节空间数量与原始的前置节点占据字节空间所使用的字节数量的差值
+/* 
  * Given a pointer 'p' to the prevlen info that prefixes an entry, this
  * function returns the difference in number of bytes needed to encode
  * the prevlen if the previous entry changes of size.
@@ -487,9 +476,7 @@ unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
  */
 int zipPrevLenByteDiff(unsigned char *p, unsigned int len) {
     unsigned int prevlensize;
-	//获取当前节点的前置节点需要使用几个字节大小来表示其所占据的空间字节数
     ZIP_DECODE_PREVLENSIZE(p, prevlensize);
-	//计算新的字节数量对应使用的字节数与先前前置节点使用的字节数表示的差值                              
     return zipStorePrevEntryLength(NULL, len) - prevlensize;
 }
 
