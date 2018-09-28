@@ -1,5 +1,4 @@
-/* redis内部实现的字典结构----->即hash
- * Hash Tables Implementation.
+/* Hash Tables Implementation.
  *
  * This file implements in-memory hash tables with insert/del/replace/find/
  * get-random-element operations. Hash tables will auto-resize if needed
@@ -78,21 +77,17 @@ typedef struct dict {
     unsigned long iterators; 
 } dict;
 
-/* 遍历字典结构的迭代器结构
+/* 
  * If safe is set to 1 this is a safe iterator, that means, you can call
  * dictAdd, dictFind, and other functions against the dictionary even while
  * iterating. Otherwise it is a non safe iterator, and only dictNext() should be called while iterating. 
  */
 typedef struct dictIterator {
-    //对应的需要遍历的字典结构
     dict *d;
-	//当前遍历到的索引位置
     long index;
-	//当前遍历的是那张hash表
     int table, safe;
     dictEntry *entry, *nextEntry;
     /* unsafe iterator fingerprint for misuse detection. */
-	//对应的记录不安全迭代器需要记录的当前字典的状态信息
     long long fingerprint;
 } dictIterator;
 
@@ -103,12 +98,10 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 #define DICT_HT_INITIAL_SIZE     4
 
 /* ------------------------------- Macros ------------------------------------*/
-//释放对应节点值部分空间的处理宏
 #define dictFreeVal(d, entry)                                         \
     if ((d)->type->valDestructor)                                     \
         (d)->type->valDestructor((d)->privdata, (entry)->v.val)
 
-//给对应节点值部分设置值的处理宏
 #define dictSetVal(d, entry, _val_) do {                              \
     if ((d)->type->valDup)                                            \
         (entry)->v.val = (d)->type->valDup((d)->privdata, _val_);     \
@@ -116,24 +109,19 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
         (entry)->v.val = (_val_);                                     \
 } while(0)
 
-//给对应的节点值部分设置值为对应的有符号整数数据的处理宏
 #define dictSetSignedIntegerVal(entry, _val_)                         \
     do { (entry)->v.s64 = _val_; } while(0)
 
-//给对应的节点值部分设置值为对应的无符号整数数据的处理宏
 #define dictSetUnsignedIntegerVal(entry, _val_)                       \
     do { (entry)->v.u64 = _val_; } while(0)
-		
-//给对应的节点值部分设置值为对应的double类型数据的处理宏
+
 #define dictSetDoubleVal(entry, _val_)                                \
     do { (entry)->v.d = _val_; } while(0)
 
-//释放对应节点建部分空间的处理宏
 #define dictFreeKey(d, entry)                                         \
     if ((d)->type->keyDestructor)                                     \
         (d)->type->keyDestructor((d)->privdata, (entry)->key)
 
-//给对应节点键部分设置值的处理宏
 #define dictSetKey(d, entry, _key_) do {                              \
     if ((d)->type->keyDup)                                            \
         (entry)->key = (d)->type->keyDup((d)->privdata, _key_);       \
@@ -141,7 +129,6 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
         (entry)->key = (_key_);                                       \
 } while(0)
 
-//用于比较两个键部分是否相等的处理宏
 #define dictCompareKeys(d, key1, key2)                                \
     (((d)->type->keyCompare) ?                                        \
         (d)->type->keyCompare((d)->privdata, key1, key2) :            \

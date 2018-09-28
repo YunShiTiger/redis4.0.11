@@ -1,0 +1,4 @@
+---- dictFindEntryRefByPtrAndHash Matches (3 in 3 files) ----
+replaceSateliteDictKeyPtrAndOrDefragDictEntry in defrag.c (src) :     dictEntry **deref = dictFindEntryRefByPtrAndHash(d, oldkey, hash);
+dict.c (src) line 1295 : dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash) {
+dict.h (src) line 192 : dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash);
