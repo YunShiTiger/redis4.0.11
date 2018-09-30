@@ -1,4 +1,6 @@
----- dictFindEntryRefByPtrAndHash Matches (3 in 3 files) ----
-replaceSateliteDictKeyPtrAndOrDefragDictEntry in defrag.c (src) :     dictEntry **deref = dictFindEntryRefByPtrAndHash(d, oldkey, hash);
-dict.c (src) line 1295 : dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash) {
-dict.h (src) line 192 : dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash);
+---- quicklistReplaceAtIndex Matches (5 in 3 files) ----
+quicklist.c (src) line 803 : int quicklistReplaceAtIndex(quicklist *quicklist, long index, void *data, int sz) {
+quicklistTest in quicklist.c (src) :             quicklistReplaceAtIndex(ql, 1, "foo", 3);
+quicklistTest in quicklist.c (src) :             quicklistReplaceAtIndex(ql, -1, "bar", 3);
+quicklist.h (src) line 148 : int quicklistReplaceAtIndex(quicklist *quicklist, long index, void *data, int sz);
+lsetCommand in t_list.c (src) :         int replaced = quicklistReplaceAtIndex(ql, index,

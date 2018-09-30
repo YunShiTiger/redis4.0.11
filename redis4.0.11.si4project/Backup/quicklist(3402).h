@@ -78,35 +78,21 @@ typedef struct quicklist {
     unsigned int compress : 16; /* depth of end nodes not to compress;0=off */
 } quicklist;
 
-/* quicklist的迭代器结构 */
 typedef struct quicklistIter {
-    //指向所属的quicklist的指针
     const quicklist *quicklist;
-	//指向当前迭代的quicklist节点的指针
     quicklistNode *current;
-	//指向当前quicklist节点中迭代的ziplist
     unsigned char *zi;
-	//当前ziplist结构中的偏移量
     long offset; /* offset in current ziplist */
-	//迭代方向
     int direction;
 } quicklistIter;
 
-/* 管理quicklist中quicklistNode节点中ziplist信息的结构 */
 typedef struct quicklistEntry {
-	//指向所属的quicklist的指针
     const quicklist *quicklist;
-	//指向所属的quicklistNode节点的指针
     quicklistNode *node;
-	//指向当前ziplist结构的指针
     unsigned char *zi;
-	//指向当前ziplist结构的字符串vlaue成员
     unsigned char *value;
-	//指向当前ziplist结构的整数value成员
     long long longval;
-	//保存当前ziplist结构的字节数大小
     unsigned int sz;
-	//保存相对ziplist的偏移量
     int offset;
 } quicklistEntry;
 
