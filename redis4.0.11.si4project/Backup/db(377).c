@@ -148,15 +148,9 @@ robj *lookupKeyWrite(redisDb *db, robj *key) {
     return lookupKey(db,key,LOOKUP_NONE);
 }
 
-/* 以读取并相应对应键值对象 */
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply) {
-    //查找redis中是否有对应键所对应的值对象
     robj *o = lookupKeyRead(c->db, key);
-	//检测是否在redis中查找到对应的值对象
-    if (!o) 
-		//直接向对应的客户端返回没有找到对应键对象对应值对象的响应
-		addReply(c,reply);
-	//返回对应的值对象的指向(这个地方的值对象可以为null,如果为null的话,其实已经给对应的客户端响应结构了)
+    if (!o) addReply(c,reply);
     return o;
 }
 

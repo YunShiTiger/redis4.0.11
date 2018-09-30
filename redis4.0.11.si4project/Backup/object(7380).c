@@ -349,16 +349,11 @@ robj *resetRefCount(robj *obj) {
     return obj;
 }
 
-/* 检测对应的值对象是否是对应类型的值对象 */
 int checkType(client *c, robj *o, int type) {
-    //检测对应的值对象类型是否与对应的类型相同
     if (o->type != type) {
-		//给客户端返回类型不匹配错误
         addReply(c,shared.wrongtypeerr);
-		//返回不不匹配标识
         return 1;
     }
-	//返回类型匹配标识
     return 0;
 }
 
