@@ -768,7 +768,7 @@ REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node, un
     return gone ? 1 : 0;
 }
 
-/* 删除给定元素的节点,如果删除成功需要对应迭代器的参数数据,用于指向下一个需要进行遍历的元素
+/* 删除给定元素的节点,如果删除成功需要对应迭代器的参数数据
  * Delete one element represented by 'entry'
  *
  * 'entry' stores enough metadata to delete the proper position in the correct ziplist in the correct quicklist node.

@@ -1,5 +1,31 @@
-/* 
- * Redis Object implementation.
+/* Redis Object implementation.
+ *
+ * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "server.h"
@@ -86,10 +112,8 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  * used.
  *
  * The current limit of 39 is chosen so that the biggest string object
- * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. 
- */
+ * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
-
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
         return createEmbeddedStringObject(ptr,len);
@@ -279,51 +303,25 @@ void freeModuleObject(robj *o) {
     zfree(mv);
 }
 
-/*增加对应值对象的引用计数值*/
 void incrRefCount(robj *o) {
-    //检测是否是共享类型对象
-    if (o->refcount != OBJ_SHARED_REFCOUNT) 
-		//增加对应的引用计数值
-		o->refcount++;
+    if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount++;
 }
 
-/*减少对应的对象的引用计数---->如果对应的对象引用计数为1,再减少说明没有对象对其进行引用了,需要进行释放对应的对象空间了*/
 void decrRefCount(robj *o) {
-    //检测是否还有其他的对象对其进行引用---->没有就根据类型进行空间释放操作处理
     if (o->refcount == 1) {
-		//根据值对象的类型不同,触发不同的释放空间操作处理
         switch(o->type) {
-        	case OBJ_STRING: 
-				freeStringObject(o); 
-				break;
-        	case OBJ_LIST: 
-				freeListObject(o); 
-				break;
-        	case OBJ_SET: 
-				freeSetObject(o); 
-				break;
-        	case OBJ_ZSET: 
-				freeZsetObject(o); 
-				break;
-        	case OBJ_HASH: 
-				freeHashObject(o); 
-				break;
-        	case OBJ_MODULE: 
-				freeModuleObject(o); 
-				break;
-        	default: 
-        	serverPanic("Unknown object type"); 
-			break;
+        case OBJ_STRING: freeStringObject(o); break;
+        case OBJ_LIST: freeListObject(o); break;
+        case OBJ_SET: freeSetObject(o); break;
+        case OBJ_ZSET: freeZsetObject(o); break;
+        case OBJ_HASH: freeHashObject(o); break;
+        case OBJ_MODULE: freeModuleObject(o); break;
+        default: serverPanic("Unknown object type"); break;
         }
-		//最后将本值对象占据的空间也触发释放空间操作处理
         zfree(o);
     } else {
-		//检测引用计数是否减少到了负数的异常处理
-        if (o->refcount <= 0) 
-			serverPanic("decrRefCount against refcount <= 0");
-		//检测对应的对象是否是共享类型对象
-        if (o->refcount != OBJ_SHARED_REFCOUNT) 
-			o->refcount--;
+        if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
+        if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount--;
     }
 }
 
@@ -457,27 +455,20 @@ robj *tryObjectEncoding(robj *o) {
     return o;
 }
 
-/* 
- * Get a decoded version of an encoded object (returned as a new object).
- * If the object is already raw-encoded just increment the ref count.
- */
+/* Get a decoded version of an encoded object (returned as a new object).
+ * If the object is already raw-encoded just increment the ref count. */
 robj *getDecodedObject(robj *o) {
     robj *dec;
-	//检测是否是字符串类型的对象
+
     if (sdsEncodedObject(o)) {
-		//增加本字符串类型的引用计数
         incrRefCount(o);
-		//返回增加引用计数后的对象
         return o;
     }
-	//处理对象是字符串类型对象,同时实现方式是编码整数类型
     if (o->type == OBJ_STRING && o->encoding == OBJ_ENCODING_INT) {
         char buf[32];
-		//获取整数所对应的字符串类型数据
+
         ll2string(buf,32,(long)o->ptr);
-	    //创建对应的字符串类型数据
         dec = createStringObject(buf,strlen(buf));
-		//返回新创建的字符串类型对象
         return dec;
     } else {
         serverPanic("Unknown encoding type");
@@ -645,83 +636,52 @@ int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, cons
     return C_OK;
 }
 
-/*本函数是获取对象中存储的整数数据的核心处理函数------>即真正完成从对象中获取记录的整数数据的处理*/
 int getLongLongFromObject(robj *o, long long *target) {
     long long value;
-	//检测给定的对象是否为空
+
     if (o == NULL) {
-		//直接设置0值
         value = 0;
     } else {
         serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
-		//检测对应的数据是否是字符串类型的数据对象
         if (sdsEncodedObject(o)) {
-			//尝试将对应的字符串类型数据转化成对应的整数类型数据--------->这个地方是尝试进行转换操作处理------>本函数的核心操作
-            if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) 
-				return C_ERR;
+            if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
-            //直接获取存储的整数数据
             value = (long)o->ptr;
         } else {
-			//其他类型的数据对象错误
             serverPanic("Unknown string encoding");
         }
     }
-
-	//检测是否配置了对应的存储数据的空间
-    if (target) 
-		//设置获取到的整数数据
-		*target = value;
-	
-	//返回获取整数数据成功的标识
+    if (target) *target = value;
     return C_OK;
 }
 
-/*本函数在获取对象中整数数据函数的基础上添加了数据获取失败直接向客户端进行响应的处理------>即在整数失败时向客户端进行发送失败原因*/
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg) {
     long long value;
-	//调用处理获取对象中整数数据的核心处理函数进行获取整数数据是否成功
     if (getLongLongFromObject(o, &value) != C_OK) {
-		//检测是否配置了失败消息
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
         } else {
             addReplyError(c,"value is not an integer or out of range");
         }
-		//返回获取对应的整数数据失败的错误标识
         return C_ERR;
     }
-	//记录获取到的整数数据
     *target = value;
-	//返回获取数据成功的标识
     return C_OK;
 }
 
-/*从对应的对象中获取一个整数数据,如果获取失败直接向对应的客户端响应获取数据失败,已经失败的原因*/
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) {
-    //定义变量,用于存储对应的整数值
     long long value;
 
-    //获取对应对象的整数值------>此处调用的函数具有获取数据失败直接进行相应操作处理的功能
-    if (getLongLongFromObjectOrReply(c, o, &value, msg) != C_OK) 
-		return C_ERR;
-	
-	//检测获取的整数值是否超过的对应的范围--------------->本函数在核心函数的功能上添加了对获取的整数进行范围是否越界的判断处理
+    if (getLongLongFromObjectOrReply(c, o, &value, msg) != C_OK) return C_ERR;
     if (value < LONG_MIN || value > LONG_MAX) {
-		//检测是否配置了需要发送失败的消息
         if (msg != NULL) {
-			//向客户端发送获取对应参数数据失败的原因
             addReplyError(c,(char*)msg);
         } else {
-            //向客户端发送获取整数数据失败的原因是给定的整数范围超出了范围
             addReplyError(c,"value is out of range");
         }
-		//返回错误标识
         return C_ERR;
     }
-	//记录获取到的整数数据
     *target = value;
-	//返回获取对应整数数据正确的标识
     return C_OK;
 }
 

@@ -1248,27 +1248,17 @@ typedef struct _redisSortOperation {
     robj *pattern;
 } redisSortOperation;
 
-/* 进行遍历List列表数据时对应的迭代器结构
- * Structure to hold list iteration abstraction. 
- */
+/* Structure to hold list iteration abstraction. */
 typedef struct {
-    //对应的需要进行遍历的List列表类型对象
     robj *subject;
-	//当前值对象的底层编码方式
     unsigned char encoding;
-	//用于记录遍历的方向
     unsigned char direction; /* Iteration direction */
-	//用于记录List列表值对象中使用quicklist实现所对应的迭代器------>即真正进行数据遍历的迭代器对象
     quicklistIter *iter;
 } listTypeIterator;
 
-/* 进行遍历List列表数据时所对应的当前遍历到的节点数据结构
- * Structure for an entry while iterating over a list. 
- */
+/* Structure for an entry while iterating over a list. */
 typedef struct {
-    //对应的List列表的迭代器对象
     listTypeIterator *li;
-	//用于记录对应的List列表中使用quicklist实现时,找到的对应的quicklist中对应的元素节点信息
     quicklistEntry entry; /* Entry in quicklist */
 } listTypeEntry;
 
