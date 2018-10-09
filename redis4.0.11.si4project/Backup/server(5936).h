@@ -1280,24 +1280,17 @@ typedef struct {
     dictIterator *di;
 } setTypeIterator;
 
-/* 进行遍历hash对象的迭代器结构
- * Structure to hold hash iteration abstraction. Note that iteration over
+/* Structure to hold hash iteration abstraction. Note that iteration over
  * hashes involves both fields and values. Because it is possible that
  * not both are required, store pointers in the iterator to avoid
- * unnecessary memory allocation for fields/values. 
- */
+ * unnecessary memory allocation for fields/values. */
 typedef struct {
-    //需要迭代的对象
     robj *subject;
-	//对象的编码方式
     int encoding;
 
-    //进行遍历ziplist类型时 需要的两个指向指针
     unsigned char *fptr, *vptr;
 
-    //进行遍历hash表类型时 需要的迭代器
     dictIterator *di;
-	//用于记录当前迭代的实体对象
     dictEntry *de;
 } hashTypeIterator;
 
