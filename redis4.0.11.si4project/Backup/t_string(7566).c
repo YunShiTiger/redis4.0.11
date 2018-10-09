@@ -1,15 +1,38 @@
 /*
- * Redis中字符串对象的实现操作处理
+ * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "server.h"
 #include <math.h> /* isnan(), isinf() */
 
 /*-----------------------------------------------------------------------------
- * 字符串类型对象提供的相关命令
  * String Commands
- *----------------------------------------------------------------------------
- */
+ *----------------------------------------------------------------------------*/
 
 static int checkStringLength(client *c, long long size) {
     if (size > 512*1024*1024) {
@@ -19,8 +42,7 @@ static int checkStringLength(client *c, long long size) {
     return C_OK;
 }
 
-/* 
- * The setGenericCommand() function implements the SET operation with different
+/* The setGenericCommand() function implements the SET operation with different
  * options and variants. This function is called in order to implement the
  * following commands: SET, SETEX, PSETEX, SETNX.
  *
@@ -34,22 +56,14 @@ static int checkStringLength(client *c, long long size) {
  * XX flags.
  *
  * If ok_reply is NULL "+OK" is used.
- * If abort_reply is NULL, "$-1" is used. 
- */
+ * If abort_reply is NULL, "$-1" is used. */
 
 #define OBJ_SET_NO_FLAGS 0
-#define OBJ_SET_NX (1<<0)     /* Set if key not exists. 在key不存在的情况下才会设置 */
-#define OBJ_SET_XX (1<<1)     /* Set if key exists. 在key存在的情况下才会设置 */
-#define OBJ_SET_EX (1<<2)     /* Set if time in seconds is given 以秒(s)为单位设置键的key过期时间 */
-#define OBJ_SET_PX (1<<3)     /* Set if time in ms in given 以毫秒(ms)为单位设置键的key过期时间 */
+#define OBJ_SET_NX (1<<0)     /* Set if key not exists. */
+#define OBJ_SET_XX (1<<1)     /* Set if key exists. */
+#define OBJ_SET_EX (1<<2)     /* Set if time in seconds is given */
+#define OBJ_SET_PX (1<<3)     /* Set if time in ms in given */
 
-/* setGenericCommand()函数是以下命令: SET, SETEX, PSETEX, SETNX.的最底层实现
- * flags 可以是NX或XX，由上面的宏提供
- * expire 定义key的过期时间，格式由unit指定
- * ok_reply和abort_reply保存着回复client的内容，NX和XX也会改变回复
- * 如果ok_reply为空，则使用 "+OK"
- * 如果abort_reply为空，则使用 "$-1"
- */
 void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
@@ -60,117 +74,82 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
             addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
             return;
         }
-        if (unit == UNIT_SECONDS) 
-			milliseconds *= 1000;
+        if (unit == UNIT_SECONDS) milliseconds *= 1000;
     }
 
-    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) || (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL)) {
+    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
+        (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
+    {
         addReply(c, abort_reply ? abort_reply : shared.nullbulk);
         return;
     }
     setKey(c->db,key,val);
     server.dirty++;
-    if (expire) 
-		setExpire(c,c->db,key,mstime()+milliseconds);
+    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
-    if (expire) 
-		notifyKeyspaceEvent(NOTIFY_GENERIC,"expire",key,c->db->id);
+    if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
+        "expire",key,c->db->id);
     addReply(c, ok_reply ? ok_reply : shared.ok);
 }
 
-/* 
- * 用于设置给定 key 的值。如果 key 已经存储其他值， SET 就覆写旧值，且无视类型。
- * 命令格式
- *     SET key value [NX] [XX] [EX <seconds>] [PX <milliseconds>]
- * 返回值
- *     在 Redis 2.6.12 以前版本，SET 命令总是返回 OK 
- *     从 Redis 2.6.12 版本开始，SET 在设置操作成功完成时，才返回 OK 
- */
+/* SET key value [NX] [XX] [EX <seconds>] [PX <milliseconds>] */
 void setCommand(client *c) {
     int j;
     robj *expire = NULL;
     int unit = UNIT_SECONDS;
-	//初始化标记
     int flags = OBJ_SET_NO_FLAGS;
 
-    //循环遍历客户端传入的后续参数
     for (j = 3; j < c->argc; j++) {
         char *a = c->argv[j]->ptr;
-		//用于记录是否有下一个参数值
         robj *next = (j == c->argc-1) ? NULL : c->argv[j+1];
-        if ((a[0] == 'n' || a[0] == 'N') && (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && !(flags & OBJ_SET_XX)) {
-			//设置NX标记  
+
+        if ((a[0] == 'n' || a[0] == 'N') &&
+            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
+            !(flags & OBJ_SET_XX))
+        {
             flags |= OBJ_SET_NX;
-        } else if ((a[0] == 'x' || a[0] == 'X') && (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && !(flags & OBJ_SET_NX)) {
-            //设置XX标记  
+        } else if ((a[0] == 'x' || a[0] == 'X') &&
+                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
+                   !(flags & OBJ_SET_NX))
+        {
             flags |= OBJ_SET_XX;
-        } else if ((a[0] == 'e' || a[0] == 'E') && (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && !(flags & OBJ_SET_PX) && next) {
-			//设置EX标记  
+        } else if ((a[0] == 'e' || a[0] == 'E') &&
+                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
+                   !(flags & OBJ_SET_PX) && next)
+        {
             flags |= OBJ_SET_EX;
-			//设置时间类型
             unit = UNIT_SECONDS;
-			//记录设置的过期时间对象
             expire = next;
-			//注意此处需要进行跳过对应的参数
             j++;
-        } else if ((a[0] == 'p' || a[0] == 'P') && (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && !(flags & OBJ_SET_EX) && next) {
-			//设置PX标记  
+        } else if ((a[0] == 'p' || a[0] == 'P') &&
+                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
+                   !(flags & OBJ_SET_EX) && next)
+        {
             flags |= OBJ_SET_PX;
-			//设置时间类型
             unit = UNIT_MILLISECONDS;
-			//记录设置的过期时间对象
             expire = next;
-			//注意此处需要进行跳过对应的参数
             j++;
         } else {
-			//向客户端返回传入参数格式出现问题的错误响应
             addReply(c,shared.syntaxerr);
             return;
         }
     }
-	
-	//对value进行最优的编码
+
     c->argv[2] = tryObjectEncoding(c->argv[2]);
-	//触发通用的进行设置字符串对象的处理
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
 
-/* 
- * Redis Setnx（SET if Not eXists） 命令在指定的 key 不存在时，为 key 设置指定的值
- * 命令格式
- *     SETNX KEY_NAME VALUE
- * 返回值
- *     设置成功，返回 1 。 设置失败，返回 0 。
- */
 void setnxCommand(client *c) {
-    //对value进行最优的编码
     c->argv[2] = tryObjectEncoding(c->argv[2]);
-	//
     setGenericCommand(c,OBJ_SET_NX,c->argv[1],c->argv[2],NULL,0,shared.cone,shared.czero);
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void setexCommand(client *c) {
-	//对value进行最优的编码
     c->argv[3] = tryObjectEncoding(c->argv[3]);
     setGenericCommand(c,OBJ_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_SECONDS,NULL,NULL);
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void psetexCommand(client *c) {
-	//对value进行最优的编码
     c->argv[3] = tryObjectEncoding(c->argv[3]);
     setGenericCommand(c,OBJ_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
 }
@@ -190,24 +169,10 @@ int getGenericCommand(client *c) {
     }
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void getCommand(client *c) {
     getGenericCommand(c);
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void getsetCommand(client *c) {
     if (getGenericCommand(c) == C_ERR) return;
     c->argv[2] = tryObjectEncoding(c->argv[2]);
@@ -216,13 +181,6 @@ void getsetCommand(client *c) {
     server.dirty++;
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void setrangeCommand(client *c) {
     robj *o;
     long offset;
@@ -283,13 +241,6 @@ void setrangeCommand(client *c) {
     addReplyLongLong(c,sdslen(o->ptr));
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void getrangeCommand(client *c) {
     robj *o;
     long long start, end;
@@ -331,13 +282,6 @@ void getrangeCommand(client *c) {
     }
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void mgetCommand(client *c) {
     int j;
 
@@ -386,24 +330,10 @@ void msetGenericCommand(client *c, int nx) {
     addReply(c, nx ? shared.cone : shared.ok);
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void msetCommand(client *c) {
     msetGenericCommand(c,0);
 }
 
-/* 
- *
- *
- *
- *
- *
- */
 void msetnxCommand(client *c) {
     msetGenericCommand(c,1);
 }
@@ -541,11 +471,3 @@ void strlenCommand(client *c) {
         checkType(c,o,OBJ_STRING)) return;
     addReplyLongLong(c,stringObjectLen(o));
 }
-
-
-
-
-
-
-
-
