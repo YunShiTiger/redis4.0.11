@@ -1,77 +1,81 @@
 /*
- * redis中集合命令的实现方式
- *    Set 是 String 类型的无序集合。集合成员是唯一的，这就意味着集合中不能出现重复的数据。
+ * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "server.h"
 
-/*----------------------------------------------------------------------------
- * 集合命令
+/*-----------------------------------------------------------------------------
  * Set Commands
- *----------------------------------------------------------------------------
- */
+ *----------------------------------------------------------------------------*/
 
-void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstkey, int op);
+void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
+                              robj *dstkey, int op);
 
-/* 根据提供的元素的值来确定需要创建何种类型的集合实现方式
- * Factory method to return a set that *can* hold "value". 
- * When the object has an integer-encodable value, an intset will be returned. Otherwise a regular hash table. 
- */
+/* Factory method to return a set that *can* hold "value". When the object has
+ * an integer-encodable value, an intset will be returned. Otherwise a regular
+ * hash table. */
 robj *setTypeCreate(sds value) {
-    //检测对应的元素是否是长整数数据类型
     if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)
-		//创建对应的整数集合类型对象
         return createIntsetObject();
-	//创建对应的集合
     return createSetObject();
 }
 
-/* 将对应的值插入到集合中
- * Add the specified value into a set.
+/* Add the specified value into a set.
  *
  * If the value was already member of the set, nothing is done and 0 is
- * returned, otherwise the new element is added and 1 is returned. 
- */
+ * returned, otherwise the new element is added and 1 is returned. */
 int setTypeAdd(robj *subject, sds value) {
     long long llval;
-	//根据集合的编码方式不同进行不同的操作处理
     if (subject->encoding == OBJ_ENCODING_HT) {
-		//h获取对应的字典结构指向
         dict *ht = subject->ptr;
-		//尝试进行元素插入处理
         dictEntry *de = dictAddRaw(ht,value,NULL);
-	    //根据返回的元素节点判断是否插入成功
         if (de) {
-			//不知道此处为什么由要重新插入一次字段数据的处理
             dictSetKey(ht,de,sdsdup(value));
-			//设置一个null值给对应的字段
             dictSetVal(ht,de,NULL);
-		    //返回插入数据成功的标识
             return 1;
         }
     } else if (subject->encoding == OBJ_ENCODING_INTSET) {
-        //获取当前需要插入的元素是否是整数数据
         if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             uint8_t success = 0;
-			//将对应的整数元素添加到集合中
             subject->ptr = intsetAdd(subject->ptr,llval,&success);
-		    //检测是否插入元素成功
             if (success) {
-                /* Convert to regular set when the intset contains too many entries. */
-			    //检测整数集合中存储的元素个数是否超过了预设的整数值
+                /* Convert to regular set when the intset contains
+                 * too many entries. */
                 if (intsetLen(subject->ptr) > server.set_max_intset_entries)
-					//进行类型转换操作处理
                     setTypeConvert(subject,OBJ_ENCODING_HT);
-				//返回添加元素成功操作标识
                 return 1;
             }
         } else {
             /* Failed to get integer from object, convert to regular set. */
-		    //类型不是整数,直接进行转换类型处理
             setTypeConvert(subject,OBJ_ENCODING_HT);
 
-            /* The set *was* an intset and this value is not integer encodable, so dictAdd should always work. */
-			//将对应的元素插入到字典结构中
+            /* The set *was* an intset and this value is not integer
+             * encodable, so dictAdd should always work. */
             serverAssert(dictAdd(subject->ptr,sdsdup(value),NULL) == DICT_OK);
             return 1;
         }
@@ -114,14 +118,10 @@ int setTypeIsMember(robj *subject, sds value) {
     return 0;
 }
 
-/* 根据集合对象来初始化对应的集合迭代器 */
 setTypeIterator *setTypeInitIterator(robj *subject) {
-    //首先分配迭代器对应的空间
     setTypeIterator *si = zmalloc(sizeof(setTypeIterator));
-	//设置相关参数
     si->subject = subject;
     si->encoding = subject->encoding;
-	//根据
     if (si->encoding == OBJ_ENCODING_HT) {
         si->di = dictGetIterator(subject->ptr);
     } else if (si->encoding == OBJ_ENCODING_INTSET) {
@@ -229,103 +229,63 @@ unsigned long setTypeSize(const robj *subject) {
     }
 }
 
-/* 进行集合底层实现方式的转换处理
- * Convert the set to specified encoding. The resulting dict (when converting
- * to a hash table) is presized to hold the number of elements in the original set. 
- */
+/* Convert the set to specified encoding. The resulting dict (when converting
+ * to a hash table) is presized to hold the number of elements in the original
+ * set. */
 void setTypeConvert(robj *setobj, int enc) {
     setTypeIterator *si;
-    serverAssertWithInfo(NULL,setobj,setobj->type == OBJ_SET && setobj->encoding == OBJ_ENCODING_INTSET);
-	//检测是否需要进行转换操作处理
+    serverAssertWithInfo(NULL,setobj,setobj->type == OBJ_SET &&
+                             setobj->encoding == OBJ_ENCODING_INTSET);
+
     if (enc == OBJ_ENCODING_HT) {
         int64_t intele;
-		//创建对应的字典结构
         dict *d = dictCreate(&setDictType,NULL);
         sds element;
 
         /* Presize the dict to avoid rehashing */
-		//一开始就扩展足够大的空间------>这个方便在后期插入数据时不需要进行扩容操作处理了
         dictExpand(d,intsetLen(setobj->ptr));
 
         /* To add the elements we extract integers and create redis objects */
-		//获取一个遍历集合的迭代器对象
         si = setTypeInitIterator(setobj);
-		//循环进行迭代将数据插入到新创建的字典结构中
         while (setTypeNext(si,&element,&intele) != -1) {
             element = sdsfromlonglong(intele);
             serverAssert(dictAdd(d,element,NULL) == DICT_OK);
         }
-		//释放对应的迭代器对象空间
         setTypeReleaseIterator(si);
-		//设置集合对象对应的编码方式
+
         setobj->encoding = OBJ_ENCODING_HT;
-		//释放原始整数集合对应的空间
         zfree(setobj->ptr);
-		//设置集合对象内容指向
         setobj->ptr = d;
     } else {
         serverPanic("Unsupported set conversion");
     }
 }
 
-/*
- * 将一个或多个成员元素加入到集合中，已经存在于集合的成员元素将被忽略
- *     假如集合 key 不存在，则创建一个只包含添加的元素作成员的集合。
- *     当集合 key 不是集合类型时，返回一个错误。 
- * 命令格式
- *     SADD KEY_NAME VALUE1..VALUEN
- * 返回值
- *     被添加到集合中的新元素的数量，不包括被忽略的元素
- */
 void saddCommand(client *c) {
     robj *set;
     int j, added = 0;
-	//根据给定的键获取对应的值对象
+
     set = lookupKeyWrite(c->db,c->argv[1]);
-	//检测对应的值对象是否存在
     if (set == NULL) {
-		//创建对应的集合对象------>这个地方设置的很精巧(通过第一个)
         set = setTypeCreate(c->argv[2]->ptr);
-		//将对应的键值对对象插入到redis中
         dbAdd(c->db,c->argv[1],set);
     } else {
-		//检测对应的类型是否是集合类型
         if (set->type != OBJ_SET) {
-			//返回类型错误响应
             addReply(c,shared.wrongtypeerr);
             return;
         }
     }
 
-    //循环处理插入操作处理
     for (j = 2; j < c->argc; j++) {
-		//尝试将对应的元素插入到集合中
-        if (setTypeAdd(set,c->argv[j]->ptr)) 
-			//设置插入成功元素的计数个数
-			added++;
+        if (setTypeAdd(set,c->argv[j]->ptr)) added++;
     }
-	//
     if (added) {
-		//
         signalModifiedKey(c->db,c->argv[1]);
-		//
         notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[1],c->db->id);
     }
-	//
     server.dirty += added;
-	//
     addReplyLongLong(c,added);
 }
-
-/*
- *
- *
- *
- *
- *
- *
- *
- */
 
 void sremCommand(client *c) {
     robj *set;
@@ -354,16 +314,6 @@ void sremCommand(client *c) {
     }
     addReplyLongLong(c,deleted);
 }
-
-/*
- *
- *
- *
- *
- *
- *
- *
- */
 
 void smoveCommand(client *c) {
     robj *srcset, *dstset, *ele;
@@ -420,16 +370,6 @@ void smoveCommand(client *c) {
     addReply(c,shared.cone);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- *
- */
-
 void sismemberCommand(client *c) {
     robj *set;
 
@@ -441,16 +381,6 @@ void sismemberCommand(client *c) {
     else
         addReply(c,shared.czero);
 }
-
-/*
- *
- *
- *
- *
- *
- *
- *
- */
 
 void scardCommand(client *c) {
     robj *o;
@@ -468,7 +398,6 @@ void scardCommand(client *c) {
  * for us to use the "create new set" strategy? Read later in the
  * implementation for more info. */
 #define SPOP_MOVE_STRATEGY_MUL 5
-
 
 void spopWithCountCommand(client *c) {
     long l;
@@ -622,16 +551,6 @@ void spopWithCountCommand(client *c) {
     signalModifiedKey(c->db,c->argv[1]);
     server.dirty++;
 }
-
-/*
- *
- *
- *
- *
- *
- *
- *
- */
 
 void spopCommand(client *c) {
     robj *set, *ele, *aux;
@@ -829,16 +748,6 @@ void srandmemberWithCountCommand(client *c) {
     }
 }
 
-/*
- *
- *
- *
- *
- *
- *
- *
- */
-
 void srandmemberCommand(client *c) {
     robj *set;
     sds ele;
@@ -1008,7 +917,6 @@ void sinterGenericCommand(client *c, robj **setkeys,
     }
     zfree(sets);
 }
-
 
 void sinterCommand(client *c) {
     sinterGenericCommand(c,c->argv+1,c->argc-1,NULL);
@@ -1202,25 +1110,8 @@ void sscanCommand(client *c) {
     robj *set;
     unsigned long cursor;
 
-    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) 
-		return;
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) return;
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,set,OBJ_SET)) return;
     scanGenericCommand(c,set,cursor);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

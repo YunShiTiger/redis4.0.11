@@ -169,27 +169,17 @@ robj *createZiplistObject(void) {
     return o;
 }
 
-/* 创建对应的字典类型集合对象 */
 robj *createSetObject(void) {
-    //创建对应的字典结构
     dict *d = dictCreate(&setDictType,NULL);
-	//创建对应的字典结构对象
     robj *o = createObject(OBJ_SET,d);
-	//设置对象的编码实现方式
     o->encoding = OBJ_ENCODING_HT;
-	//返回对应的对象
     return o;
 }
 
-/* 创建对应的整数集合类型对象*/
 robj *createIntsetObject(void) {
-    //创建对应的整数集合结构
     intset *is = intsetNew();
-	//创建对应的整数集合对象
     robj *o = createObject(OBJ_SET,is);
-	//设置对象的编码实现方式
     o->encoding = OBJ_ENCODING_INTSET;
-	//返回对应的对象
     return o;
 }
 
