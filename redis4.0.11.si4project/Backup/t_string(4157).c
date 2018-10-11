@@ -513,29 +513,20 @@ void incrDecrCommand(client *c, long long incr) {
 
     //检测对应的整数字符串对象是否是共享类型
     if (o && o->refcount == 1 && o->encoding == OBJ_ENCODING_INT && (value < 0 || value >= OBJ_SHARED_INTEGERS) && value >= LONG_MIN && value <= LONG_MAX) {
-        //直接记录对应的非共享整数字符串对象
+        
 		new = o;
-		//设置对应的增量后的整数值
         o->ptr = (void*)((long)value);
     } else {
-		//共享对象此处需要创建对应的整数字符串对象
         new = createStringObjectFromLongLong(value);
-		//检测对应的对象是否存在
         if (o) {
-			//进行复写操作处理
             dbOverwrite(c->db,c->argv[1],new);
         } else {
-            //进行添加操作处理
             dbAdd(c->db,c->argv[1],new);
         }
     }
-	//发送键值对空间变化信号
     signalModifiedKey(c->db,c->argv[1]);
-	//发送触发对应命令的通知
     notifyKeyspaceEvent(NOTIFY_STRING,"incrby",c->argv[1],c->db->id);
-	//脏数据计数增加
     server.dirty++;
-	//设置需要返回客户端的响应信息-------------->注意下面是分别配置传输的协议参数
     addReply(c,shared.colon);
     addReply(c,new);
     addReply(c,shared.crlf);
@@ -607,48 +598,29 @@ void decrbyCommand(client *c) {
     incrDecrCommand(c,-incr);
 }
 
-/*
- * 为 key 中所储存的值加上指定的浮点数增量值
- *        如果 key 不存在，那么 INCRBYFLOAT 会先将 key 的值设为 0 ，再执行加法操作
- * 命令格式
- *     INCRBYFLOAT KEY_NAME INCR_AMOUNT
- * 返回值
- *     执行命令之后 key 的值
- */  
 void incrbyfloatCommand(client *c) {
     long double incr, value;
     robj *o, *new, *aux;
-	//获取键所对应的值对象
+
     o = lookupKeyWrite(c->db,c->argv[1]);
-	//检测值对象是否存在,且是否是字符串类型对象
     if (o != NULL && checkType(c,o,OBJ_STRING)) 
 		return;
-	//活对应的值对象中是否记录的是数值类型,同时获取设置的对应增量值
     if (getLongDoubleFromObjectOrReply(c,o,&value,NULL) != C_OK || getLongDoubleFromObjectOrReply(c,c->argv[2],&incr,NULL) != C_OK)
         return;
-	//计算增量后的值
+
     value += incr;
-	//检测增量后的值是否越界
     if (isnan(value) || isinf(value)) {
         addReplyError(c,"increment would produce NaN or Infinity");
         return;
     }
-	//创建对应的新的对象
     new = createStringObjectFromLongDouble(value,1);
-	//根据对应的值对象是否存在来进行处理
     if (o)
-		//进行复写操作处理
         dbOverwrite(c->db,c->argv[1],new);
     else
-		//将对应的键值对添加到空间中
         dbAdd(c->db,c->argv[1],new);
-	//发送键值对空间变化信号
     signalModifiedKey(c->db,c->argv[1]);
-	//发送触发对应命令通知
     notifyKeyspaceEvent(NOTIFY_STRING,"incrbyfloat",c->argv[1],c->db->id);
-	//增加脏数据计数
     server.dirty++;
-	//向客户端返回增量后的新数据
     addReplyBulk(c,new);
 
     /* Always replicate INCRBYFLOAT as a SET command with the final value
@@ -660,77 +632,43 @@ void incrbyfloatCommand(client *c) {
     rewriteClientCommandArgument(c,2,new);
 }
 
-/*
- * 用于为指定的 key 追加值
- *     如果 key 已经存在并且是一个字符串， APPEND 命令将 value 追加到 key 原来的值的末尾
- *     如果 key 不存在， APPEND 就简单地将给定 key 设为 value ，就像执行 SET key value 一样
- * 命令格式
- *     APPEND KEY_NAME NEW_VALUE
- * 返回值
- *     追加指定值之后， key 中字符串的长度
- */
 void appendCommand(client *c) {
     size_t totlen;
     robj *o, *append;
 
-	//根据给定的键获取对应的值对象
     o = lookupKeyWrite(c->db,c->argv[1]);
-	//检测对应的值对象是否存在
     if (o == NULL) {
         /* Create the key */
         c->argv[2] = tryObjectEncoding(c->argv[2]);
-		//将对应的键值对数据插入到redis中
         dbAdd(c->db,c->argv[1],c->argv[2]);
-	    //增加对值对象的引用计数------->这个地方原因一定要清楚
         incrRefCount(c->argv[2]);
-		//获取字符串对象对应的长度值
         totlen = stringObjectLen(c->argv[2]);
     } else {
         /* Key exists, check type */
-	    //检测值对象的类型是否是字符串类型
         if (checkType(c,o,OBJ_STRING))
             return;
 
         /* "append" is an argument, so always an sds */
-		//获取需要追加的字符串对象
         append = c->argv[2];
-		//获取追加后总的字符串的长度
         totlen = stringObjectLen(o)+sdslen(append->ptr);
-		//检测字符串长度是否越界
         if (checkStringLength(c,totlen) != C_OK)
             return;
 
         /* Append the value */
-		//获取对应的非共享类型对象
         o = dbUnshareStringValue(c->db,c->argv[1],o);
-		//设置对应的内容指向
         o->ptr = sdscatlen(o->ptr,append->ptr,sdslen(append->ptr));
-		//获取对应的长度值
         totlen = sdslen(o->ptr);
     }
-	//发送键值对空间变化的信号
     signalModifiedKey(c->db,c->argv[1]);
-	//发送触发对应命令的通知
     notifyKeyspaceEvent(NOTIFY_STRING,"append",c->argv[1],c->db->id);
-	//增加脏数据计数
     server.dirty++;
-	//向客户端返回对应的长度值
     addReplyLongLong(c,totlen);
 }
 
-/*
- * 用于获取指定 key 所储存的字符串值的长度。当 key 储存的不是字符串值时，返回一个错误
- * 命令格式
- *     STRLEN KEY_NAME
- * 返回值
- *     字符串值的长度。 当 key 不存在时，返回 0。
- */
 void strlenCommand(client *c) {
     robj *o;
-	//检测对应键所对应的值对象是否存在,且对应的值对象是否是字符串类型对象
-    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL || checkType(c,o,OBJ_STRING)) 
-		return;
-	//向客户端返回当前字符串对象的长度值信息
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_STRING)) return;
     addReplyLongLong(c,stringObjectLen(o));
 }
 

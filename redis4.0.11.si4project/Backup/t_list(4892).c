@@ -1001,12 +1001,10 @@ void signalListAsReady(redisDb *db, robj *key) {
     readyList *rl;
 
     /* No clients blocking for this key? No need to queue it. */
-    if (dictFind(db->blocking_keys,key) == NULL) 
-		return;
+    if (dictFind(db->blocking_keys,key) == NULL) return;
 
     /* Key was already signaled? No need to queue it again. */
-    if (dictFind(db->ready_keys,key) != NULL) 
-		return;
+    if (dictFind(db->ready_keys,key) != NULL) return;
 
     /* Ok, we need to queue this key into server.ready_keys. */
     rl = zmalloc(sizeof(*rl));

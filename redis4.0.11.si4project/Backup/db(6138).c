@@ -166,85 +166,57 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
     return o;
 }
 
-/* 
- * Add the key to the DB. It's up to the caller to increment the reference
+/* Add the key to the DB. It's up to the caller to increment the reference
  * counter of the value if needed.
  *
- * The program is aborted if the key already exists. 
- */
+ * The program is aborted if the key already exists. */
 void dbAdd(redisDb *db, robj *key, robj *val) {
-    //复制对应的键对象的字符串数据
     sds copy = sdsdup(key->ptr);
-	//将对应的键值对对象放置于redis中------->此处是核心部分---->对于键对象是取自参数对象中的字符串,对于值对象是取自于参数部分的值对象
     int retval = dictAdd(db->dict, copy, val);
 
     serverAssertWithInfo(NULL,key,retval == DICT_OK);
-	//特殊检查当前插入的值对象是否是List里边对象-------->这个地方可能引发去堵塞操作处理
-    if (val->type == OBJ_LIST) 
-		//发送一个List列表对象已经准备好的信号
-		signalListAsReady(db, key);
-	//检查是否开启了集群模式
-    if (server.cluster_enabled) 
-		slotToKeyAdd(key);
+    if (val->type == OBJ_LIST) signalListAsReady(db, key);
+    if (server.cluster_enabled) slotToKeyAdd(key);
  }
 
-/* 
- * Overwrite an existing key with a new value. Incrementing the reference
+/* Overwrite an existing key with a new value. Incrementing the reference
  * count of the new value is up to the caller.
  * This function does not modify the expire time of the existing key.
  *
- * The program is aborted if the key was not already present. 
- */
+ * The program is aborted if the key was not already present. */
 void dbOverwrite(redisDb *db, robj *key, robj *val) {
-    //获取对应的原始键值对对象
     dictEntry *de = dictFind(db->dict,key->ptr);
 
     serverAssertWithInfo(NULL,key,de != NULL);
-	//查询当前redis中配置的内存清楚策略------>
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-		//获取老的值对象
         robj *old = dictGetVal(de);
-		//
         int saved_lru = old->lru;
-	    //
         dictReplace(db->dict, key->ptr, val);
-		//
         val->lru = saved_lru;
-        /* LFU should be not only copied but also updated when a key is overwritten. */
-		//
+        /* LFU should be not only copied but also updated
+         * when a key is overwritten. */
         updateLFU(val);
     } else {
-		//进行值对象的替换操作处理
         dictReplace(db->dict, key->ptr, val);
     }
 }
 
-/* 进行添加或者覆盖键值对的通用接口操作
- * High level Set operation. This function can be used in order to set
+/* High level Set operation. This function can be used in order to set
  * a key, whatever it was existing or not, to a new object.
  *
  * 1) The ref count of the value object is incremented.
  * 2) clients WATCHing for the destination key notified.
  * 3) The expire time of the key is reset (the key is made persistent).
  *
- * All the new keys in the database should be craeted via this interface. 
- */
+ * All the new keys in the database should be craeted via this interface. */
 void setKey(redisDb *db, robj *key, robj *val) {
-    //首先检测对应的键是否已经存在于redis中
     if (lookupKeyWrite(db,key) == NULL) {
-		//进行添加对应的键值对对象操作处理
         dbAdd(db,key,val);
     } else {
-        //进行覆盖重写对应的键值对操作处理
         dbOverwrite(db,key,val);
     }
-	//增加对值对象的引用计数-------->这个地方需要明确两个问题
-	//1. 为什么不进行增加键的引用计数呢------->可以在dbAdd函数内部发现 对键对象进行了拷贝了内部字符串内容的操作处理
-	//2. 为什么要对引用计数进行增加处理------->可以在dbAdd函数内部发现 对值对象是直接进行赋值操作处理,增加引用计数说明在redis键值对中引用了它,后期再网络那块进行引用计数减少时,不会引发释放redis中引用此对象的空间释放操作处理
     incrRefCount(val);
-	//主动触发对过期键的删除操作处理-------->键删除策略中的主动行为
     removeExpire(db,key);
-	//发送键值对空间变化信号
     signalModifiedKey(db,key);
 }
 
@@ -311,8 +283,7 @@ int dbDelete(redisDb *db, robj *key) {
                                              dbSyncDelete(db,key);
 }
 
-/* 
- * Prepare the string object stored at 'key' to be modified destructively
+/* Prepare the string object stored at 'key' to be modified destructively
  * to implement commands like SETBIT or APPEND.
  *
  * An object is usually ready to be modified unless one of the two conditions
@@ -341,17 +312,12 @@ int dbDelete(redisDb *db, robj *key) {
  */
 robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o) {
     serverAssert(o->type == OBJ_STRING);
-	//检测对应的字符串对象是否被共享过
     if (o->refcount != 1 || o->encoding != OBJ_ENCODING_RAW) {
         robj *decoded = getDecodedObject(o);
-		//创建一个新的字符串对象
         o = createRawStringObject(decoded->ptr, sdslen(decoded->ptr));
-	    //减少对原始字符串对象的引用计数
         decrRefCount(decoded);
-		//将此键值对对象进行一次重新插入到redis中的处理
         dbOverwrite(db,key,o);
     }
-	//返回新创建的字符串对象
     return o;
 }
 
