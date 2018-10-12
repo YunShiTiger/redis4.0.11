@@ -1272,17 +1272,11 @@ typedef struct {
     quicklistEntry entry; /* Entry in quicklist */
 } listTypeEntry;
 
-/* 进行遍历集合对象的迭代器
- * Structure to hold set iteration abstraction. 
- */
+/* Structure to hold set iteration abstraction. */
 typedef struct {
-    //指向迭代器的集合对象
     robj *subject;
-    //对应的编码方式
     int encoding;
-	//整数集合进行遍历时的索引位置
     int ii; /* intset iterator */
-	//字典类型集合对象对应的迭代器指向
     dictIterator *di;
 } setTypeIterator;
 

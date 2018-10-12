@@ -307,7 +307,8 @@ int dbSyncDelete(redisDb *db, robj *key) {
 /* This is a wrapper whose behavior depends on the Redis lazy free
  * configuration. Deletes the key synchronously or asynchronously. */
 int dbDelete(redisDb *db, robj *key) {
-    return server.lazyfree_lazy_server_del ? dbAsyncDelete(db,key) : dbSyncDelete(db,key);
+    return server.lazyfree_lazy_server_del ? dbAsyncDelete(db,key) :
+                                             dbSyncDelete(db,key);
 }
 
 /* 

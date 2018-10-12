@@ -81,53 +81,36 @@ int setTypeAdd(robj *subject, sds value) {
     return 0;
 }
 
-/* 将对应的元素在集合中删除处理 */
 int setTypeRemove(robj *setobj, sds value) {
     long long llval;
-	//根据对象的编码方式进行不同的处理
     if (setobj->encoding == OBJ_ENCODING_HT) {
-		//检测是否在字典对象中删除元素成功
         if (dictDelete(setobj->ptr,value) == DICT_OK) {
-			//检测是否需要进行调整字典结构的尺寸处理
-            if (htNeedsResize(setobj->ptr))
-				//进行尺寸变化操作处理
-				dictResize(setobj->ptr);
-			//返回删除成功标识
+            if (htNeedsResize(setobj->ptr)) dictResize(setobj->ptr);
             return 1;
         }
     } else if (setobj->encoding == OBJ_ENCODING_INTSET) {
-        //检测对应的元素是否是整数类型
         if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
             int success;
-			//进行尝试删除操作处理
             setobj->ptr = intsetRemove(setobj->ptr,llval,&success);
-		    //检测是否删除操作成功
-            if (success) 
-				return 1;
+            if (success) return 1;
         }
     } else {
         serverPanic("Unknown set encoding");
     }
-	//返回对应元素不存在,删除失败的标识
     return 0;
 }
 
-/* 检测对应的元素是否存在于集合对象中 */
 int setTypeIsMember(robj *subject, sds value) {
     long long llval;
     if (subject->encoding == OBJ_ENCODING_HT) {
-		//在字典结构中查询对应的元素是否存在
         return dictFind((dict*)subject->ptr,value) != NULL;
     } else if (subject->encoding == OBJ_ENCODING_INTSET) {
-        //首先检测对应的元素是否是整数类型
         if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
-			//进行查找处理
             return intsetFind((intset*)subject->ptr,llval);
         }
     } else {
         serverPanic("Unknown set encoding");
     }
-	//返回没有找到标识
     return 0;
 }
 
@@ -138,32 +121,25 @@ setTypeIterator *setTypeInitIterator(robj *subject) {
 	//设置相关参数
     si->subject = subject;
     si->encoding = subject->encoding;
-	//根据集合对象的编码类型来获取对应的遍历迭代器
+	//根据
     if (si->encoding == OBJ_ENCODING_HT) {
-		//获取字典的迭代器
         si->di = dictGetIterator(subject->ptr);
     } else if (si->encoding == OBJ_ENCODING_INTSET) {
-        //获取整数集合的迭代位置
         si->ii = 0;
     } else {
         serverPanic("Unknown set encoding");
     }
-	//返回对应的迭代器对象指向
     return si;
 }
 
-/* 释放对应的迭代器对象占据的空间 */
 void setTypeReleaseIterator(setTypeIterator *si) {
-    //检测是否是字典类型的
     if (si->encoding == OBJ_ENCODING_HT)
-		//释放对应的字典类型迭代器占据的空间
         dictReleaseIterator(si->di);
-	//释放集合对象迭代器占据的空间
     zfree(si);
 }
 
-/* 获取当前能够遍历到的集合中的元素
- * Move to the next entry in the set. Returns the object at the current position.
+/* Move to the next entry in the set. Returns the object at the current
+ * position.
  *
  * Since set elements can be internally be stored as SDS strings or
  * simple arrays of integers, setTypeNext returns the encoding of the
@@ -174,58 +150,41 @@ void setTypeReleaseIterator(setTypeIterator *si) {
  * be NULL since the function will try to defensively populate the non
  * used field with values which are easy to trap if misused.
  *
- * When there are no longer elements -1 is returned. 
- */
+ * When there are no longer elements -1 is returned. */
 int setTypeNext(setTypeIterator *si, sds *sdsele, int64_t *llele) {
-    //根据遍历类型获取对应的元素位置
     if (si->encoding == OBJ_ENCODING_HT) {
-		//在字典结构中获取下一个需要遍历的元素
         dictEntry *de = dictNext(si->di);
-		//检测是否找到对应的元素
-        if (de == NULL) 
-			//返回没有对应元素的标识
-			return -1;
-		//获取对应的字段内容
+        if (de == NULL) return -1;
         *sdsele = dictGetKey(de);
-		//给对应的值内容设置一个默认值---------------------------->其实应该是null的
         *llele = -123456789; /* Not needed. Defensive. */
     } else if (si->encoding == OBJ_ENCODING_INTSET) {
-		//在整数集合中获取下一个元素
         if (!intsetGet(si->subject->ptr,si->ii++,llele))
-			//返回没有对应元素的标识
             return -1;
         *sdsele = NULL; /* Not needed. Defensive. */
     } else {
         serverPanic("Wrong set encoding in setTypeNext");
     }
-	//返回对应的编码方式类型------------->不清楚为什么返回这个值????????????????????????????????????????????
     return si->encoding;
 }
 
-/* 根据给定的迭代器中记录的节点元素获取节点元素所对应的一个新的字符串数据
- * The not copy on write friendly version but easy to use version
+/* The not copy on write friendly version but easy to use version
  * of setTypeNext() is setTypeNextObject(), returning new SDS
  * strings. So if you don't retain a pointer to this object you should call
  * sdsfree() against it.
  *
- * This function is the way to go for write operations where COW is not an issue. 
- */
+ * This function is the way to go for write operations where COW is not
+ * an issue. */
 sds setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
     sds sdsele;
     int encoding;
-	//获取对应的下一个元素
+
     encoding = setTypeNext(si,&sdsele,&intele);
-	//根据返回的编码方式来处理获取数据的方式
     switch(encoding) {
-        case -1:    
-			//返回对应的空对象
-			return NULL;
+        case -1:    return NULL;
         case OBJ_ENCODING_INTSET:
-			//返回对应的整数对应的字符串数据
             return sdsfromlonglong(intele);
         case OBJ_ENCODING_HT:
-			//返回新的字符串数据
             return sdsdup(sdsele);
         default:
             serverPanic("Unsupported encoding");
@@ -233,8 +192,7 @@ sds setTypeNextObject(setTypeIterator *si) {
     return NULL; /* just to suppress warnings */
 }
 
-/* 在集合对象中随机获取一个元素的值
- * Return random element from a non empty set.
+/* Return random element from a non empty set.
  * The returned element can be a int64_t value if the set is encoded
  * as an "intset" blob of integers, or an SDS string if the set
  * is a regular set.
@@ -248,33 +206,23 @@ sds setTypeNextObject(setTypeIterator *si) {
  * be NULL since the function will try to defensively populate the non
  * used field with values which are easy to trap if misused. */
 int setTypeRandomElement(robj *setobj, sds *sdsele, int64_t *llele) {
-    //根据当前集合对象的编码方式进行相关处理
     if (setobj->encoding == OBJ_ENCODING_HT) {
-		//在字典结构中随机获取一个元素
         dictEntry *de = dictGetRandomKey(setobj->ptr);
-		//设置获取的对应元素值--->即对应的字段
         *sdsele = dictGetKey(de);
-	    //设置对应的value值------>原始为null对象,此处返回一个默认值了
         *llele = -123456789; /* Not needed. Defensive. */
     } else if (setobj->encoding == OBJ_ENCODING_INTSET) {
-		//在整数集合中获取对应的整数值
         *llele = intsetRandom(setobj->ptr);
         *sdsele = NULL; /* Not needed. Defensive. */
     } else {
         serverPanic("Unknown set encoding");
     }
-	//返回当前集合的编码方式-------------->目的是根据返回的编码方式来从传入的两个参数中获取需要获取的元素的值
     return setobj->encoding;
 }
 
-/* 获取给定集合对象中元素的个数*/
 unsigned long setTypeSize(const robj *subject) {
-    //根据当前集合对象的编码方式进行相关处理
     if (subject->encoding == OBJ_ENCODING_HT) {
-		//获取字典结构中元素的个数
         return dictSize((const dict*)subject->ptr);
     } else if (subject->encoding == OBJ_ENCODING_INTSET) {
-        //获取整数集合中元素的数量
         return intsetLen((const intset*)subject->ptr);
     } else {
         serverPanic("Unknown set encoding");
@@ -356,188 +304,160 @@ void saddCommand(client *c) {
 			//设置插入成功元素的计数个数
 			added++;
     }
-	//检测是否有进行插入元素
+	//
     if (added) {
-		//发送改变键值对内容的信号
+		//
         signalModifiedKey(c->db,c->argv[1]);
-		//发送触发对应命令的通知
+		//
         notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[1],c->db->id);
     }
-	//增加脏计数值
+	//
     server.dirty += added;
-	//返回插入元素的数量值
+	//
     addReplyLongLong(c,added);
 }
 
 /*
- * 用于移除集合中的一个或多个成员元素，不存在的成员元素会被忽略
- *     当 key 不是集合类型，返回一个错误
- * 命令格式
- *     SREM KEY MEMBER1..MEMBERN
- * 返回值
- *     被成功移除的元素的数量，不包括被忽略的元素
+ *
+ *
+ *
+ *
+ *
+ *
  *
  */
+
 void sremCommand(client *c) {
     robj *set;
     int j, deleted = 0, keyremoved = 0;
 
-    //检测给定的键对象是否存在,且为集合类型
-    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
+    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,set,OBJ_SET)) return;
 
-    //循环进行删除操作处理
     for (j = 2; j < c->argc; j++) {
-		//进行删除对应的元素
         if (setTypeRemove(set,c->argv[j]->ptr)) {
-			//进行删除元素计数
             deleted++;
-			//检测当前集合中的对象个数是否为0
             if (setTypeSize(set) == 0) {
-				//进行删除键值对的操作处理
                 dbDelete(c->db,c->argv[1]);
-				//设置删除键值对标识
                 keyremoved = 1;
-			    //跳出循环
                 break;
             }
         }
     }
-	//检测是否删除元素
     if (deleted) {
-		//发送键值对空间变化信号
         signalModifiedKey(c->db,c->argv[1]);
-		//发送操作对应命令通知
         notifyKeyspaceEvent(NOTIFY_SET,"srem",c->argv[1],c->db->id);
-	    //检测是否触发了删除键值对的处理
         if (keyremoved)
-			//发送操作对应命令通知
-            notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
-		//进行脏数据计数增加
+            notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],
+                                c->db->id);
         server.dirty += deleted;
     }
-	//向客户端返回删除的元素个数
     addReplyLongLong(c,deleted);
 }
 
 /*
- * 将指定成员 member 元素从 source 集合移动到 destination 集合
- *     如果 source 集合不存在或不包含指定的 member 元素，则 SMOVE 命令不执行任何操作，仅返回 0 。否则， member 元素从 source 集合中被移除，并添加到 destination 集合中去
- *     当 destination 集合已经包含 member 元素时， SMOVE 命令只是简单地将 source 集合中的 member 元素删除
- *     当 source 或 destination 不是集合类型时，返回一个错误
- * 命令格式
- *     SMOVE SOURCE DESTINATION MEMBER
- * 返回值
- *     如果成员元素被成功移除，返回 1。 如果成员元素不是 source 集合的成员，并且没有任何操作对 destination 集合执行，那么返回 0
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  */
+
 void smoveCommand(client *c) {
     robj *srcset, *dstset, *ele;
-	//获取传入的源和目的键所对应的值对象
     srcset = lookupKeyWrite(c->db,c->argv[1]);
     dstset = lookupKeyWrite(c->db,c->argv[2]);
     ele = c->argv[3];
 
     /* If the source key does not exist return 0 */
-	//检测源值对象是否存在
     if (srcset == NULL) {
-		//向客户端返回0
         addReply(c,shared.czero);
         return;
     }
 
-    /* If the source key has the wrong type, or the destination key is set and has the wrong type, return with an error. */
-    //检测源和目的是否都是集合类型对象
-	if (checkType(c,srcset,OBJ_SET) || (dstset && checkType(c,dstset,OBJ_SET))) 
-        return;
+    /* If the source key has the wrong type, or the destination key
+     * is set and has the wrong type, return with an error. */
+    if (checkType(c,srcset,OBJ_SET) ||
+        (dstset && checkType(c,dstset,OBJ_SET))) return;
 
     /* If srcset and dstset are equal, SMOVE is a no-op */
-	//检测给定的源和目的是否是同一个集合对象
     if (srcset == dstset) {
-		//根据元素是否存在返回对应的值
-        addReply(c,setTypeIsMember(srcset,ele->ptr) ? shared.cone : shared.czero);
+        addReply(c,setTypeIsMember(srcset,ele->ptr) ?
+            shared.cone : shared.czero);
         return;
     }
 
     /* If the element cannot be removed from the src set, return 0. */
-	//检测元素在源集合对象是是否存在,且进行删除成功
     if (!setTypeRemove(srcset,ele->ptr)) {
         addReply(c,shared.czero);
         return;
     }
-	//发送对应的删除命令通知
     notifyKeyspaceEvent(NOTIFY_SET,"srem",c->argv[1],c->db->id);
 
     /* Remove the src set from the database when empty */
-	//检测删除元素后,集合元素是否为0
     if (setTypeSize(srcset) == 0) {
-		//删除对应的键值对
         dbDelete(c->db,c->argv[1]);
-		//发送对应的删除键值对的通知
         notifyKeyspaceEvent(NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
     }
 
     /* Create the destination set when it doesn't exist */
-	//检测对应的目的集合对象是否存在
     if (!dstset) {
-		//创建对应的集合对象
         dstset = setTypeCreate(ele->ptr);
-		//将对应的键值对对象插入到redis中
         dbAdd(c->db,c->argv[2],dstset);
     }
-    //发送键值对空间变化信号
+
     signalModifiedKey(c->db,c->argv[1]);
     signalModifiedKey(c->db,c->argv[2]);
-	//增加脏计数值
     server.dirty++;
 
     /* An extra key has changed when ele was successfully added to dstset */
-	//检测是否将元素插入到目的集合对象成功
     if (setTypeAdd(dstset,ele->ptr)) {
-		//增加脏计数值
         server.dirty++;
-		//发送对应的命令通知
         notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[2],c->db->id);
     }
-	//向客户端返回元素转移成功标识
     addReply(c,shared.cone);
 }
 
 /*
- * 判断成员元素是否是集合的成员
- * 命令格式
- *     SISMEMBER KEY VALUE
- * 返回值
- *     如果成员元素是集合的成员，返回 1 。 如果成员元素不是集合的成员，或 key 不存在，返回 0
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  */
+
 void sismemberCommand(client *c) {
     robj *set;
-	
-	//检测给定的键对象是否存在,且为集合类型
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
-	//检测对应的元素是否在集合对象中
+
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,set,OBJ_SET)) return;
+
     if (setTypeIsMember(set,c->argv[2]->ptr))
-		//返回存在标识
         addReply(c,shared.cone);
     else
-		//返回不存在标识
         addReply(c,shared.czero);
 }
 
 /*
- * 返回集合中元素的数量
- * 命令格式
- *     SCARD KEY_NAME
- * 返回值
- *     集合的数量。 当集合 key 不存在时，返回 0
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  */
+
 void scardCommand(client *c) {
     robj *o;
-	
-	//检测给定的键对象是否存在,且为集合类型
-    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL || checkType(c,o,OBJ_SET)) 
-		return;
-	//返回对应集合对象的元素数量
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_SET)) return;
+
     addReplyLongLong(c,setTypeSize(o));
 }
 
@@ -556,8 +476,7 @@ void spopWithCountCommand(client *c) {
     robj *set;
 
     /* Get the count argument */
-    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) 
-		return;
+    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return;
     if (l >= 0) {
         count = (unsigned long) l;
     } else {
@@ -567,8 +486,8 @@ void spopWithCountCommand(client *c) {
 
     /* Make sure a key with the name inputted exists, and that it's type is
      * indeed a set. Otherwise, return nil */
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk)) == NULL || checkType(c,set,OBJ_SET)) 
-        return;
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk))
+        == NULL || checkType(c,set,OBJ_SET)) return;
 
     /* If count is zero, serve an empty multibulk ASAP to avoid special
      * cases later. */
@@ -713,6 +632,7 @@ void spopWithCountCommand(client *c) {
  *
  *
  */
+
 void spopCommand(client *c) {
     robj *set, *ele, *aux;
     sds sdsele;
@@ -729,8 +649,8 @@ void spopCommand(client *c) {
 
     /* Make sure a key with the name inputted exists, and that it's type is
      * indeed a set */
-    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.nullbulk)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
+    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.nullbulk)) == NULL ||
+        checkType(c,set,OBJ_SET)) return;
 
     /* Get a random element from the set */
     encoding = setTypeRandomElement(set,&sdsele,&llele);
@@ -766,18 +686,14 @@ void spopCommand(client *c) {
     server.dirty++;
 }
 
-/* 
- * handle the "SRANDMEMBER key <count>" variant. The normal version of the
- * command is handled by the srandmemberCommand() function itself. 
- */
+/* handle the "SRANDMEMBER key <count>" variant. The normal version of the
+ * command is handled by the srandmemberCommand() function itself. */
 
 /* How many times bigger should be the set compared to the requested size
  * for us to don't use the "remove elements" strategy? Read later in the
- * implementation for more info. 
- */
+ * implementation for more info. */
 #define SRANDMEMBER_SUB_STRATEGY_MUL 3
 
-/* 获取指定数量的随机元素 */
 void srandmemberWithCountCommand(client *c) {
     long l;
     unsigned long count, size;
@@ -789,46 +705,34 @@ void srandmemberWithCountCommand(client *c) {
 
     dict *d;
 
-    //获取对应的数量值
-    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) 
-		return;
-	//检测传入的数量值是否大于零
+    if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return;
     if (l >= 0) {
         count = (unsigned long) l;
     } else {
         /* A negative count means: return the same elements multiple times
          * (i.e. don't remove the extracted element after every extraction). */
         count = -l;
-		//设置获取元素可以重复的标识
         uniq = 0;
     }
 
-    //检测给定的键所对应的值对象是否存在,且对应的值对象是否是集合类型
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
-	//获取集合对象元素个数
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptymultibulk))
+        == NULL || checkType(c,set,OBJ_SET)) return;
     size = setTypeSize(set);
 
     /* If count is zero, serve it ASAP to avoid special cases later. */
-	//特殊检测传入的数量为0
     if (count == 0) {
-		//向客户端返回空
         addReply(c,shared.emptymultibulk);
         return;
     }
 
     /* CASE 1: The count was negative, so the extraction method is just:
      * "return N random elements" sampling the whole set every time.
-     * This case is trivial and can be served without auxiliary data structures. */
-    //传入参数为负,即允许获取可以重复的元素
+     * This case is trivial and can be served without auxiliary data
+     * structures. */
     if (!uniq) {
-		//设置返回值的空间个数
         addReplyMultiBulkLen(c,count);
-		//循环获取元素
         while(count--) {
-			//随机获取对应的元素
             encoding = setTypeRandomElement(set,&ele,&llele);
-			//根据返回的编码类型获取对应的数据
             if (encoding == OBJ_ENCODING_INTSET) {
                 addReplyBulkLongLong(c,llele);
             } else {
@@ -841,9 +745,7 @@ void srandmemberWithCountCommand(client *c) {
     /* CASE 2:
      * The number of requested elements is greater than the number of
      * elements inside the set: simply return the whole set. */
-    //传入的值大于集合中元素的数量
     if (count >= size) {
-		//返回整个集合对象的元素
         sunionDiffGenericCommand(c,c->argv+1,1,NULL,SET_OP_UNION);
         return;
     }
@@ -928,45 +830,36 @@ void srandmemberWithCountCommand(client *c) {
 }
 
 /*
- * 用于返回集合中的一个随机元素
- *     Srandmember 命令接受可选的 count 参数
- *         如果 count 为正数，且小于集合基数，那么命令返回一个包含 count 个元素的数组，数组中的元素各不相同。如果 count 大于等于集合基数，那么返回整个集合
- *         如果 count 为负数，那么命令返回一个数组，数组中的元素可能会重复出现多次，而数组的长度为 count 的绝对值
- *     该操作和 SPOP 相似，但 SPOP 将随机元素从集合中移除并返回，而 Srandmember 则仅仅返回随机元素，而不对集合进行任何改动    
- * 命令格式
- *     SRANDMEMBER KEY [count]
- * 返回值
- *     只提供集合 key 参数时，返回一个元素；如果集合为空，返回 nil 。 如果提供了 count 参数，那么返回一个数组；如果集合为空，返回空数组。
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  */
+
 void srandmemberCommand(client *c) {
     robj *set;
     sds ele;
     int64_t llele;
     int encoding;
 
-    //检测传入参数数量是否合法
     if (c->argc == 3) {
-		//处理传入参数为3个 即 命令 键 数量值
         srandmemberWithCountCommand(c);
         return;
     } else if (c->argc > 3) {
-		//返回参数数量错误的响应
         addReply(c,shared.syntaxerr);
         return;
     }
 
-	//检测给定的键对象是否存在,且为集合类型
-    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL || checkType(c,set,OBJ_SET)) 
-		return;
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL ||
+        checkType(c,set,OBJ_SET)) return;
 
-	//随机获取一个需要的元素
     encoding = setTypeRandomElement(set,&ele,&llele);
-	//根据编码方式,获取值的获取方式
     if (encoding == OBJ_ENCODING_INTSET) {
-		//返回对应的整数值
         addReplyBulkLongLong(c,llele);
     } else {
-        //返回对应的字符串内容
         addReplyBulkCBuffer(c,ele,sdslen(ele));
     }
 }
@@ -977,7 +870,8 @@ int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
     return 0;
 }
 
-/* This is used by SDIFF and in this case we can receive NULL that should be handled as empty sets. */
+/* This is used by SDIFF and in this case we can receive NULL that should
+ * be handled as empty sets. */
 int qsortCompareSetsByRevCardinality(const void *s1, const void *s2) {
     robj *o1 = *(robj**)s1, *o2 = *(robj**)s2;
     unsigned long first = o1 ? setTypeSize(o1) : 0;
@@ -988,7 +882,8 @@ int qsortCompareSetsByRevCardinality(const void *s1, const void *s2) {
     return 0;
 }
 
-void sinterGenericCommand(client *c, robj **setkeys, unsigned long setnum, robj *dstkey) {
+void sinterGenericCommand(client *c, robj **setkeys,
+                          unsigned long setnum, robj *dstkey) {
     robj **sets = zmalloc(sizeof(robj*)*setnum);
     setTypeIterator *si;
     robj *dstset = NULL;
@@ -1127,7 +1022,8 @@ void sinterstoreCommand(client *c) {
 #define SET_OP_DIFF 1
 #define SET_OP_INTER 2
 
-void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstkey, int op) {
+void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
+                              robj *dstkey, int op) {
     robj **sets = zmalloc(sizeof(robj*)*setnum);
     setTypeIterator *si;
     robj *dstset = NULL;
@@ -1178,7 +1074,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
             /* With algorithm 1 it is better to order the sets to subtract
              * by decreasing size, so that we are more likely to find
              * duplicated elements ASAP. */
-            qsort(sets+1,setnum-1,sizeof(robj*),qsortCompareSetsByRevCardinality);
+            qsort(sets+1,setnum-1,sizeof(robj*),
+                qsortCompareSetsByRevCardinality);
         }
     }
 
@@ -1195,8 +1092,7 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
 
             si = setTypeInitIterator(sets[j]);
             while((ele = setTypeNextObject(si)) != NULL) {
-                if (setTypeAdd(dstset,ele)) 
-					cardinality++;
+                if (setTypeAdd(dstset,ele)) cardinality++;
                 sdsfree(ele);
             }
             setTypeReleaseIterator(si);
@@ -1213,12 +1109,9 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
         si = setTypeInitIterator(sets[0]);
         while((ele = setTypeNextObject(si)) != NULL) {
             for (j = 1; j < setnum; j++) {
-                if (!sets[j]) 
-					continue; /* no key is an empty set. */
-                if (sets[j] == sets[0]) 
-					break; /* same set! */
-                if (setTypeIsMember(sets[j],ele)) 
-					break;
+                if (!sets[j]) continue; /* no key is an empty set. */
+                if (sets[j] == sets[0]) break; /* same set! */
+                if (setTypeIsMember(sets[j],ele)) break;
             }
             if (j == setnum) {
                 /* There is no other set with this element. Add it. */
@@ -1237,8 +1130,7 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
          * This is O(N) where N is the sum of all the elements in every
          * set. */
         for (j = 0; j < setnum; j++) {
-            if (!sets[j]) 
-				continue; /* non existing keys are like empty sets */
+            if (!sets[j]) continue; /* non existing keys are like empty sets */
 
             si = setTypeInitIterator(sets[j]);
             while((ele = setTypeNextObject(si)) != NULL) {
@@ -1253,8 +1145,7 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
 
             /* Exit if result set is empty as any additional removal
              * of elements will have no effect. */
-            if (cardinality == 0) 
-				break;
+            if (cardinality == 0) break;
         }
     }
 
@@ -1282,7 +1173,8 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum, robj *dstke
             decrRefCount(dstset);
             addReply(c,shared.czero);
             if (deleted)
-                notifyKeyspaceEvent(NOTIFY_GENERIC,"del",dstkey,c->db->id);
+                notifyKeyspaceEvent(NOTIFY_GENERIC,"del",
+                    dstkey,c->db->id);
         }
         signalModifiedKey(c->db,dstkey);
         server.dirty++;
