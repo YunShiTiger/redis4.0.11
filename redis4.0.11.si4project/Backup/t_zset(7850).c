@@ -1,14 +1,38 @@
-/*----------------------------------------------------------------------------
- * 有序集合的命令接口
- * Sorted set API
- *----------------------------------------------------------------------------
+/*
+ * Copyright (c) 2009-2012, Salvatore Sanfilippo <antirez at gmail dot com>
+ * Copyright (c) 2009-2012, Pieter Noordhuis <pcnoordhuis at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Redis 有序集合和集合一样也是string类型元素的集合,且不允许重复的成员。 
- * 不同的是每个元素都会关联一个double类型的分数。redis正是通过分数来为集合中的成员进行从小到大的排序。 
- * 有序集合的成员是唯一的,但分数(score)却可以重复。 
- * 集合是通过哈希表实现的，所以添加，删除，查找的复杂度都是O(1)。 集合中最大的成员数为 232 - 1 (4294967295, 每个集合可存储40多亿个成员)。 
- * ZSETs are ordered sets using two data structures to hold the same elements
+/*-----------------------------------------------------------------------------
+ * Sorted set API
+ *----------------------------------------------------------------------------*/
+
+/* ZSETs are ordered sets using two data structures to hold the same elements
  * in order to get O(log(N)) INSERT and REMOVE operations into a sorted
  * data structure.
  *
@@ -30,8 +54,7 @@
  * b) the comparison is not just by key (our 'score') but by satellite data.
  * c) there is a back pointer, so it's a doubly linked list with the back
  * pointers being only at "level 1". This allows to traverse the list
- * from tail to head, useful for ZREVRANGE. 
- */
+ * from tail to head, useful for ZREVRANGE. */
 
 #include "server.h"
 #include <math.h>
@@ -46,7 +69,8 @@ int zslLexValueLteMax(sds value, zlexrangespec *spec);
 /* Create a skiplist node with the specified number of levels.
  * The SDS string 'ele' is referenced by the node after the call. */
 zskiplistNode *zslCreateNode(int level, double score, sds ele) {
-    zskiplistNode *zn = zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
+    zskiplistNode *zn =
+        zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
     zn->score = score;
     zn->ele = ele;
     return zn;
@@ -1459,7 +1483,6 @@ long zsetRank(robj *zobj, sds ele, int reverse) {
  *----------------------------------------------------------------------------*/
 
 /* This generic command implements both ZADD and ZINCRBY. */
-/* 通用的进行元素添加到有序集合中的处理 */
 void zaddGenericCommand(client *c, int flags) {
     static char *nanerr = "resulting score is not a number (NaN)";
     robj *key = c->argv[1];
@@ -1469,25 +1492,23 @@ void zaddGenericCommand(client *c, int flags) {
     int j, elements;
     int scoreidx = 0;
     /* The following vars are used in order to track what the command actually
-     * did during the execution, to reply to the client and to trigger the notification of keyspace change. */
+     * did during the execution, to reply to the client and to trigger the
+     * notification of keyspace change. */
     int added = 0;      /* Number of new elements added. */
     int updated = 0;    /* Number of elements with updated score. */
-    int processed = 0;  /* Number of elements processed, may remain zero with options like XX. */
+    int processed = 0;  /* Number of elements processed, may remain zero with
+                           options like XX. */
 
-    /* Parse options. At the end 'scoreidx' is set to the argument position of the score of the first score-element pair. */
+    /* Parse options. At the end 'scoreidx' is set to the argument position
+     * of the score of the first score-element pair. */
     scoreidx = 2;
     while(scoreidx < c->argc) {
         char *opt = c->argv[scoreidx]->ptr;
-        if (!strcasecmp(opt,"nx")) 
-			flags |= ZADD_NX;
-        else if (!strcasecmp(opt,"xx")) 
-			flags |= ZADD_XX;
-        else if (!strcasecmp(opt,"ch")) 
-			flags |= ZADD_CH;
-        else if (!strcasecmp(opt,"incr")) 
-			flags |= ZADD_INCR;
-        else 
-			break;
+        if (!strcasecmp(opt,"nx")) flags |= ZADD_NX;
+        else if (!strcasecmp(opt,"xx")) flags |= ZADD_XX;
+        else if (!strcasecmp(opt,"ch")) flags |= ZADD_CH;
+        else if (!strcasecmp(opt,"incr")) flags |= ZADD_INCR;
+        else break;
         scoreidx++;
     }
 
@@ -1508,12 +1529,14 @@ void zaddGenericCommand(client *c, int flags) {
 
     /* Check for incompatible options. */
     if (nx && xx) {
-        addReplyError(c, "XX and NX options at the same time are not compatible");
+        addReplyError(c,
+            "XX and NX options at the same time are not compatible");
         return;
     }
 
     if (incr && elements > 1) {
-        addReplyError(c, "INCR option supports a single increment-element pair");
+        addReplyError(c,
+            "INCR option supports a single increment-element pair");
         return;
     }
 
@@ -1522,16 +1545,17 @@ void zaddGenericCommand(client *c, int flags) {
      * either execute fully or nothing at all. */
     scores = zmalloc(sizeof(double)*elements);
     for (j = 0; j < elements; j++) {
-        if (getDoubleFromObjectOrReply(c,c->argv[scoreidx+j*2],&scores[j],NULL) != C_OK) 
-			goto cleanup;
+        if (getDoubleFromObjectOrReply(c,c->argv[scoreidx+j*2],&scores[j],NULL)
+            != C_OK) goto cleanup;
     }
 
     /* Lookup the key and create the sorted set if does not exist. */
     zobj = lookupKeyWrite(c->db,key);
     if (zobj == NULL) {
-        if (xx) 
-			goto reply_to_client; /* No key + XX option: nothing to do. */
-        if (server.zset_max_ziplist_entries == 0 || server.zset_max_ziplist_value < sdslen(c->argv[scoreidx+1]->ptr)) {
+        if (xx) goto reply_to_client; /* No key + XX option: nothing to do. */
+        if (server.zset_max_ziplist_entries == 0 ||
+            server.zset_max_ziplist_value < sdslen(c->argv[scoreidx+1]->ptr))
+        {
             zobj = createZsetObject();
         } else {
             zobj = createZsetZiplistObject();
@@ -1555,12 +1579,9 @@ void zaddGenericCommand(client *c, int flags) {
             addReplyError(c,nanerr);
             goto cleanup;
         }
-        if (retflags & ZADD_ADDED) 
-			added++;
-        if (retflags & ZADD_UPDATED) 
-			updated++;
-        if (!(retflags & ZADD_NOP)) 
-			processed++;
+        if (retflags & ZADD_ADDED) added++;
+        if (retflags & ZADD_UPDATED) updated++;
+        if (!(retflags & ZADD_NOP)) processed++;
         score = newscore;
     }
     server.dirty += (added+updated);
@@ -1579,52 +1600,26 @@ cleanup:
     zfree(scores);
     if (added || updated) {
         signalModifiedKey(c->db,key);
-        notifyKeyspaceEvent(NOTIFY_ZSET, incr ? "zincr" : "zadd", key, c->db->id);
+        notifyKeyspaceEvent(NOTIFY_ZSET,
+            incr ? "zincr" : "zadd", key, c->db->id);
     }
 }
 
-/*
- * 用于将一个或多个成员元素及其分数值加入到有序集当中
- *     如果某个成员已经是有序集的成员，那么更新这个成员的分数值，并通过重新插入这个成员元素，来保证该成员在正确的位置上。
- *     分数值可以是整数值或双精度浮点数
- *     如果有序集合 key 不存在，则创建一个空的有序集并执行 ZADD 操作
- *     当 key 存在但不是有序集类型时，返回一个错误
- * 命令格式
- *     ZADD KEY_NAME SCORE1 VALUE1.. SCOREN VALUEN
- * 返回值
- *     被成功添加的新成员的数量，不包括那些被更新的、已经存在的成员
- */
 void zaddCommand(client *c) {
     zaddGenericCommand(c,ZADD_NONE);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- */
 void zincrbyCommand(client *c) {
     zaddGenericCommand(c,ZADD_INCR);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- */
 void zremCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
     int deleted = 0, keyremoved = 0, j;
 
-    if ((zobj = lookupKeyWriteOrReply(c,key,shared.czero)) == NULL || checkType(c,zobj,OBJ_ZSET)) 
-		return;
+    if ((zobj = lookupKeyWriteOrReply(c,key,shared.czero)) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) return;
 
     for (j = 2; j < c->argc; j++) {
         if (zsetDel(zobj,c->argv[j]->ptr)) deleted++;
@@ -1749,38 +1744,14 @@ cleanup:
     if (rangetype == ZRANGE_LEX) zslFreeLexRange(&lexrange);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- */
 void zremrangebyrankCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_RANK);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- */
 void zremrangebyscoreCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_SCORE);
 }
 
-/*
- *
- *
- *
- *
- *
- *
- */
 void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
 }
@@ -3006,11 +2977,9 @@ void genericZrangebylexCommand(client *c, int reverse) {
         while (ln && limit--) {
             /* Abort when the node is no longer in range. */
             if (reverse) {
-                if (!zslLexValueGteMin(ln->ele,&range)) 
-					break;
+                if (!zslLexValueGteMin(ln->ele,&range)) break;
             } else {
-                if (!zslLexValueLteMax(ln->ele,&range)) 
-					break;
+                if (!zslLexValueLteMax(ln->ele,&range)) break;
             }
 
             rangelen++;
@@ -3043,8 +3012,8 @@ void zcardCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
 
-    if ((zobj = lookupKeyReadOrReply(c,key,shared.czero)) == NULL || checkType(c,zobj,OBJ_ZSET)) 
-		return;
+    if ((zobj = lookupKeyReadOrReply(c,key,shared.czero)) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) return;
 
     addReplyLongLong(c,zsetLength(zobj));
 }
@@ -3054,8 +3023,8 @@ void zscoreCommand(client *c) {
     robj *zobj;
     double score;
 
-    if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL || checkType(c,zobj,OBJ_ZSET)) 
-		return;
+    if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) return;
 
     if (zsetScore(zobj,c->argv[2]->ptr,&score) == C_ERR) {
         addReply(c,shared.nullbulk);
@@ -3070,8 +3039,8 @@ void zrankGenericCommand(client *c, int reverse) {
     robj *zobj;
     long rank;
 
-    if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL || checkType(c,zobj,OBJ_ZSET)) 
-		return;
+    if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) return;
 
     serverAssertWithInfo(c,ele,sdsEncodedObject(ele));
     rank = zsetRank(zobj,ele->ptr,reverse);
@@ -3094,18 +3063,8 @@ void zscanCommand(client *c) {
     robj *o;
     unsigned long cursor;
 
-    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) 
-		return;
-    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL || checkType(c,o,OBJ_ZSET)) 
-		return;
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) return;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,o,OBJ_ZSET)) return;
     scanGenericCommand(c,o,cursor);
 }
-
-
-
-
-
-
-
-
-

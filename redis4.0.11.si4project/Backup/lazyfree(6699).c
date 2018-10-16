@@ -51,13 +51,10 @@ size_t lazyfreeGetFreeEffort(robj *obj) {
  * a lazy free list instead of being freed synchronously. The lazy free list
  * will be reclaimed in a different bio.c thread. */
 #define LAZYFREE_THRESHOLD 64
-
-/* 进行异步删除对应键值对占据空间的操作处理 */
 int dbAsyncDelete(redisDb *db, robj *key) {
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
-    if (dictSize(db->expires) > 0) 
-		dictDelete(db->expires,key->ptr);
+    if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
 
     /* If the value is composed of a few allocations, to free in a lazy way
      * is actually just slower... So under a certain limit we just free
@@ -93,20 +90,14 @@ int dbAsyncDelete(redisDb *db, robj *key) {
     }
 }
 
-/* 进行异步删除对应的库数据的操作处理
- * Empty a Redis DB asynchronously. What the function does actually is to
+/* Empty a Redis DB asynchronously. What the function does actually is to
  * create a new empty set of hash tables and scheduling the old ones for
- * lazy freeing. 
- */
+ * lazy freeing. */
 void emptyDbAsync(redisDb *db) {
-    //获取原始库中对应的键值对和过期键值对
     dict *oldht1 = db->dict, *oldht2 = db->expires;
-	//创建新的键值对和过期键值对,并设置给redis对应的库
     db->dict = dictCreate(&dbDictType,NULL);
     db->expires = dictCreate(&keyptrDictType,NULL);
-	//原子计算需要释放的元素键值对元素数量
     atomicIncr(lazyfree_objects,dictSize(oldht1));
-	//启动异步删除对应键值对空间的操作处理------------------------------>此处是核心处理
     bioCreateBackgroundJob(BIO_LAZY_FREE,NULL,oldht1,oldht2);
 }
 
@@ -116,7 +107,8 @@ void slotToKeyFlushAsync(void) {
     rax *old = server.cluster->slots_to_keys;
 
     server.cluster->slots_to_keys = raxNew();
-    memset(server.cluster->slots_keys_count,0,sizeof(server.cluster->slots_keys_count));
+    memset(server.cluster->slots_keys_count,0,
+           sizeof(server.cluster->slots_keys_count));
     atomicIncr(lazyfree_objects,old->numele);
     bioCreateBackgroundJob(BIO_LAZY_FREE,NULL,NULL,old);
 }
@@ -147,10 +139,3 @@ void lazyfreeFreeSlotsMapFromBioThread(rax *rt) {
     raxFree(rt);
     atomicDecr(lazyfree_objects,len);
 }
-
-
-
-
-
-
-

@@ -361,11 +361,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #define SET_OP_DIFF 1
 #define SET_OP_INTER 2
 
-/* 解析内存策略的文章 https://blog.csdn.net/gdj0001/article/details/80117797
- * Redis maxmemory strategies. Instead of using just incremental number
+/* Redis maxmemory strategies. Instead of using just incremental number
  * for this defines, we use a set of flags so that testing for certain
- * properties common to multiple policies is faster. 
- */
+ * properties common to multiple policies is faster. */
 #define MAXMEMORY_FLAG_LRU (1<<0)
 #define MAXMEMORY_FLAG_LFU (1<<1)
 #define MAXMEMORY_FLAG_ALLKEYS (1<<2)
@@ -943,9 +941,7 @@ struct redisServer {
     double stat_expired_stale_perc; /* Percentage of keys probably expired */
     long long stat_expired_time_cap_reached_count; /* Early expire cylce stops.*/
     long long stat_evictedkeys;     /* Number of evicted keys (maxmemory) */
-	//标识键值对命中的数量
     long long stat_keyspace_hits;   /* Number of successful lookups of keys */
-	//标识键值对未命中的数量
     long long stat_keyspace_misses; /* Number of failed lookups of keys */
     long long stat_active_defrag_hits;      /* number of allocations moved */
     long long stat_active_defrag_misses;    /* number of allocations scanned but not moved */

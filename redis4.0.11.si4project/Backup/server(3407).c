@@ -2537,7 +2537,6 @@ void closeListeningSockets(int unlink_unix_socket) {
     }
 }
 
-/* 准备停机，处理停机前的操作，例如杀死子进程，刷新缓冲区，关闭socket等 */
 int prepareForShutdown(int flags) {
     int save = flags & SHUTDOWN_SAVE;
     int nosave = flags & SHUTDOWN_NOSAVE;
