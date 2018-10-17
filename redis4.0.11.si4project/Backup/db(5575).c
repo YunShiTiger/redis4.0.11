@@ -1561,33 +1561,26 @@ int expireIfNeeded(redisDb *db, robj *key) {
 /* 
  * The base case is to use the keys position as given in the command table (firstkey, lastkey, step). 
  */
- //获取命令中的所有key
 int *getKeysUsingCommandTable(struct redisCommand *cmd,robj **argv, int argc, int *numkeys) {
     int j, i = 0, last, *keys;
     UNUSED(argv);
 
-    //如果第一个参数就是key，返回空，numkeys设置为0
     if (cmd->firstkey == 0) {
         *numkeys = 0;
         return NULL;
     }
-	//最后一个参数下标
+
     last = cmd->lastkey;
-	
-	//如果是负数形式，则转换为正数
-    if (last < 0) 
-		last = argc+last;
-	//分配整型数组的空间
+    if (last < 0) last = argc+last;
     keys = zmalloc(sizeof(int)*((last - cmd->firstkey)+1));
-	//遍历所有的参数
     for (j = cmd->firstkey; j <= last; j += cmd->keystep) {
         if (j >= argc) {
             /* Modules commands, and standard commands with a not fixed number
              * of arugments (negative arity parameter) do not have dispatch
              * time arity checks, so we need to handle the case where the user
              * passed an invalid number of arguments here. In this case we
-             * return no keys and expect the command implementation to report an arity or syntax error. 
-             */
+             * return no keys and expect the command implementation to report
+             * an arity or syntax error. */
             if (cmd->flags & CMD_MODULE || cmd->arity < 0) {
                 zfree(keys);
                 *numkeys = 0;
@@ -1596,16 +1589,13 @@ int *getKeysUsingCommandTable(struct redisCommand *cmd,robj **argv, int argc, in
                 serverPanic("Redis built-in command declared keys positions not matching the arity requirements.");
             }
         }
-		//记录参数的下标
         keys[i++] = j;
     }
-	//保存参数的个数
     *numkeys = i;
-	//返回数组地址
     return keys;
 }
 
-/* 从argv和argc指定的参数列表中返回所有的键
+/* 
  * Return all the arguments that are keys in the command passed via argc / argv.
  *
  * The command returns the positions of all the key arguments inside the array,
@@ -1620,19 +1610,15 @@ int *getKeysUsingCommandTable(struct redisCommand *cmd,robj **argv, int argc, in
  */
 int *getKeysFromCommand(struct redisCommand *cmd, robj **argv, int argc, int *numkeys) {
     if (cmd->flags & CMD_MODULE_GETKEYS) {
-		//
         return moduleGetCommandKeysViaAPI(cmd,argv,argc,numkeys);
     } else if (!(cmd->flags & CMD_MODULE) && cmd->getkeys_proc) {
-        //如果指定了特定的函数，则调用该函数
         return cmd->getkeys_proc(cmd,argv,argc,numkeys);
     } else {
-		//获取命令中的所有key
         return getKeysUsingCommandTable(cmd,argv,argc,numkeys);
     }
 }
 
 /* Free the result of getKeysFromCommand. */
-//释放整型数组空间
 void getKeysFreeResult(int *result) {
     zfree(result);
 }

@@ -1626,6 +1626,3 @@ cleanup:
     if (server.aof_state == AOF_WAIT_REWRITE)
         server.aof_rewrite_scheduled = 1;
 }
-
-
-

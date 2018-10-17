@@ -2067,42 +2067,30 @@ void redisOpArrayFree(redisOpArray *oa) {
 
 /* ====================== Commands lookup and execution ===================== */
 
-//根据给定的命令名称获取对应的命令详细信息
 struct redisCommand *lookupCommand(sds name) {
-    //获取对应命令的详细信息
     return dictFetchValue(server.commands, name);
 }
 
-//根据给定的命令字符串形式来获取对应的命令详细信息
 struct redisCommand *lookupCommandByCString(char *s) {
     struct redisCommand *cmd;
-	//转化成对应的字符串类型
     sds name = sdsnew(s);
-	//获取对应的命令详细信息
+
     cmd = dictFetchValue(server.commands, name);
-	//释放对应的字符串类型
     sdsfree(name);
-	//返回对应的命令详细信息
     return cmd;
 }
 
-/* 在命令表和原始命令表中查找并返回name命令
- * Lookup the command in the current table, if not found also check in
+/* Lookup the command in the current table, if not found also check in
  * the original table containing the original command names unaffected by
  * redis.conf rename-command statement.
  *
  * This is used by functions rewriting the argument vector such as
  * rewriteClientCommandVector() in order to set client->cmd pointer
- * correctly even if the command was renamed. 
- */
+ * correctly even if the command was renamed. */
 struct redisCommand *lookupCommandOrOriginal(sds name) {
-    //首先在当前的命令表中查找对应的命令详细信息实体
     struct redisCommand *cmd = dictFetchValue(server.commands, name);
-	//检测是否找到对应的命令实体
-    if (!cmd) 
-		//在没有找到的情况下,从原始的命令表中查询对应的命令实体
-		cmd = dictFetchValue(server.orig_commands,name);
-	//返回对应的命令实体对象
+
+    if (!cmd) cmd = dictFetchValue(server.orig_commands,name);
     return cmd;
 }
 
@@ -2117,7 +2105,9 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
  * This should not be used inside commands implementation. Use instead
  * alsoPropagate(), preventCommandPropagation(), forceCommandPropagation().
  */
-void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int flags) {
+void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
+               int flags)
+{
     if (server.aof_state != AOF_OFF && flags & PROPAGATE_AOF)
         feedAppendOnlyFile(cmd,dbid,argv,argc);
     if (flags & PROPAGATE_REPL)
@@ -2136,7 +2126,9 @@ void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int fl
  * so it is up to the caller to release the passed argv (but it is usually
  * stack allocated).  The function autoamtically increments ref count of
  * passed objects, so the caller does not need to. */
-void alsoPropagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int target) {
+void alsoPropagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
+                   int target)
+{
     robj **argvcopy;
     int j;
 
@@ -2762,74 +2754,45 @@ void addReplyCommand(client *c, struct redisCommand *cmd) {
     }
 }
 
-/*
- * 用于返回所有的Redis命令的详细信息，以数组形式展示
- * 命令格式
- *     COMMAND <subcommand> <args>
- * 返回值
- *     嵌套的Redis命令的详细信息列表。列表顺序是随机的
- */
+/* COMMAND <subcommand> <args> */
 void commandCommand(client *c) {
     dictIterator *di;
     dictEntry *de;
-	//根据对应的参数不同进行特殊处理
+
     if (c->argc == 1) {
-		// COMMAND 命令
-			
-		//首先分配当前命令表中命令数量的空间
         addReplyMultiBulkLen(c, dictSize(server.commands));
-		//获取迭代所有命令的迭代器
         di = dictGetIterator(server.commands);
-	    //循环迭代所有的命令
         while ((de = dictNext(di)) != NULL) {
-			//将对应的命令形式设置到响应结果中
             addReplyCommand(c, dictGetVal(de));
         }
-		//释放对应的迭代器
         dictReleaseIterator(di);
     } else if (!strcasecmp(c->argv[1]->ptr, "info")) {
-		// COMMAND info +指定命令
-		
         int i;
-		//首先设置需要返回的响应结果中元素的数量
         addReplyMultiBulkLen(c, c->argc-2);
-		//循环获取需要查询的命令的信息
         for (i = 2; i < c->argc; i++) {
-			//获取需要查询的命令的详细信息,并添加到响应结果中
             addReplyCommand(c, dictFetchValue(server.commands, c->argv[i]->ptr));
         }
     } else if (!strcasecmp(c->argv[1]->ptr, "count") && c->argc == 2) {
-        // COMMAND COUNT
-	    
-        //获取当前redis中支持的命令数量值
         addReplyLongLong(c, dictSize(server.commands));
     } else if (!strcasecmp(c->argv[1]->ptr,"getkeys") && c->argc >= 3) {
-		//COMMAND GETKEYS +指定命令
-		
-		//首先获取对应命令的详细信息
         struct redisCommand *cmd = lookupCommand(c->argv[2]->ptr);
         int *keys, numkeys, j;
-		//检测是否有对应的命令
+
         if (!cmd) {
-			//没有对应的命令
             addReplyErrorFormat(c,"Invalid command specified");
             return;
-        } else if ((cmd->arity > 0 && cmd->arity != c->argc-2) || ((c->argc-2) < -cmd->arity)) {
-			//参数错误
+        } else if ((cmd->arity > 0 && cmd->arity != c->argc-2) ||
+                   ((c->argc-2) < -cmd->arity))
+        {
             addReplyError(c,"Invalid number of arguments specified for command");
             return;
         }
 
-        //从argv和argc指定的参数列表中返回所有的键名，将下标保存在整型数组
         keys = getKeysFromCommand(cmd,c->argv+2,c->argc-2,&numkeys);
         addReplyMultiBulkLen(c,numkeys);
-        for (j = 0; j < numkeys; j++) 
-			//回复所有的键
-			addReplyBulk(c,c->argv[keys[j]+2]);
-		//释放整型数组空间
+        for (j = 0; j < numkeys; j++) addReplyBulk(c,c->argv[keys[j]+2]);
         getKeysFreeResult(keys);
     } else {
-		//返回对应的参数配置错误的响应结果
         addReplyError(c, "Unknown subcommand or wrong number of arguments.");
         return;
     }
@@ -3940,10 +3903,3 @@ int main(int argc, char **argv) {
 }
 
 /* The End */
-
-
-
-
-
-
-

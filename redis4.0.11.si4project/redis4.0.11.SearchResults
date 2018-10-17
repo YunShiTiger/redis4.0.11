@@ -1,6 +1,4 @@
----- getKeysFromCommand Matches (5 in 4 files) ----
-getNodeByQuery in cluster.c (src) :         keyindex = getKeysFromCommand(mcmd,margv,margc,&numkeys);
-db.c (src) line 1611 : int *getKeysFromCommand(struct redisCommand *cmd, robj **argv, int argc, int *numkeys) {
-db.c (src) line 1621 : /* Free the result of getKeysFromCommand. */
-commandCommand in server.c (src) :         keys = getKeysFromCommand(cmd,c->argv+2,c->argc-2,&numkeys);
-server.h (src) line 1785 : int *getKeysFromCommand(struct redisCommand *cmd, robj **argv, int argc, int *numkeys);
+---- commandCommand Matches (3 in 2 files) ----
+server.c (src) line 291 :     {"command",commandCommand,0,"lt",0,NULL,0,0,0,0,0},
+server.c (src) line 2758 : void commandCommand(client *c) {
+server.h (src) line 1857 : void commandCommand(client *c);
