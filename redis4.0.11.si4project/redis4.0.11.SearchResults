@@ -1,4 +1,5 @@
----- commandCommand Matches (3 in 2 files) ----
-server.c (src) line 291 :     {"command",commandCommand,0,"lt",0,NULL,0,0,0,0,0},
-server.c (src) line 2758 : void commandCommand(client *c) {
-server.h (src) line 1857 : void commandCommand(client *c);
+---- RDB_OPCODE_EOF Matches (4 in 3 files) ----
+rdbSaveRio in rdb.c (src) :     if (rdbSaveType(rdb,RDB_OPCODE_EOF) == -1)
+rdbLoadRio in rdb.c (src) :         } else if (type == RDB_OPCODE_EOF) {
+rdb.h (src) line 104 : #define RDB_OPCODE_EOF        255
+redis_check_rdb in redis-check-rdb.c (src) :         } else if (type == RDB_OPCODE_EOF) {

@@ -69,8 +69,8 @@
 #define RDB_ENC_INT32 2       /* 32 bit signed integer */
 #define RDB_ENC_LZF 3         /* string compressed with FASTLZ */
 
-/* Dup object types to RDB object types. Only reason is readability (are we dealing with RDB types or with in-memory object types?). */
-//值对象编码类型
+/* Dup object types to RDB object types. Only reason is readability (are we
+ * dealing with RDB types or with in-memory object types?). */
 #define RDB_TYPE_STRING 0
 #define RDB_TYPE_LIST   1
 #define RDB_TYPE_SET    2
@@ -78,7 +78,8 @@
 #define RDB_TYPE_HASH   4
 #define RDB_TYPE_ZSET_2 5 /* ZSET version 2 with doubles stored in binary. */
 #define RDB_TYPE_MODULE 6
-#define RDB_TYPE_MODULE_2 7 /* Module value with annotations for parsing without the generating module being loaded. */
+#define RDB_TYPE_MODULE_2 7 /* Module value with annotations for parsing without
+                               the generating module being loaded. */
 /* NOTE: WHEN ADDING NEW RDB TYPE, UPDATE rdbIsObjectType() BELOW */
 
 /* Object types for encoded objects. */
@@ -96,9 +97,7 @@
 /* Special RDB opcodes (saved/loaded with rdbSaveType/rdbLoadType). */
 #define RDB_OPCODE_AUX        250
 #define RDB_OPCODE_RESIZEDB   251
-//过期时间为毫秒值的标识
 #define RDB_OPCODE_EXPIRETIME_MS 252
-//过期时间为秒值的标识
 #define RDB_OPCODE_EXPIRETIME 253
 #define RDB_OPCODE_SELECTDB   254
 #define RDB_OPCODE_EOF        255
